@@ -38,7 +38,10 @@ export default defineSchema({
     pinLockedUntil: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_slug", ["slug"]),
+  })
+    .index("by_slug", ["slug"])
+    // The public list reads only listed tournaments, newest first.
+    .index("by_public", ["isPublic", "createdAt"]),
 
   events: defineTable({
     tournamentId: v.id("tournaments"),
@@ -54,7 +57,6 @@ export default defineSchema({
     scoring: scoringValidator,
     /** Knockout options. */
     thirdPlace: v.boolean(),
-    seededCount: v.number(),
     /** Group stage options, ignored by the other formats. */
     groupCount: v.number(),
     advancePerGroup: v.number(),

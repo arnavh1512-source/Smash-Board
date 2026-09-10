@@ -12,7 +12,26 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Written by `convex codegen`; not ours to lint.
+    "convex/_generated/**",
+    // Written by `vitest --coverage`.
+    "coverage/**",
   ]),
+  {
+    rules: {
+      // A leading underscore is how this codebase marks a binding that only
+      // exists to be destructured away, e.g. stripping the PIN hash off a row.
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+          ignoreRestSiblings: true,
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

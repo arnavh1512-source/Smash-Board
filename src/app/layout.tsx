@@ -92,7 +92,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-full flex flex-col bg-slate-50 text-slate-900">
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+          dangerouslySetInnerHTML={{ // A literal `</script>` inside a JSON string would close the tag early.
+            __html: JSON.stringify(faqJsonLd).replace(/</g, "\\u003c") }}
         />
         <ConvexClientProvider>
           <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/85 backdrop-blur">

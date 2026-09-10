@@ -37,6 +37,9 @@ function slugify(name: string): string {
     .slice(0, 40);
 }
 
+/** How many times `create` will retry before giving up on a free slug. */
+const MAX_SLUG_ATTEMPTS = 6;
+
 function randomSuffix(): string {
   const alphabet = "abcdefghijkmnpqrstuvwxyz23456789";
   const bytes = new Uint8Array(4);
@@ -70,15 +73,21 @@ export const create = mutation({
     if (name.length > MAX_NAME) throw new ConvexError(`Keep the name under ${MAX_NAME} characters.`);
     assertPinShape(args.pin);
 
+    // `getBySlug` uses `.unique()`, which would throw forever on a duplicate,
+    // so a clash must never be inserted. Each retry widens the suffix, which
+    // makes a run of clashes impossible rather than merely improbable.
     const base = slugify(name) || "tournament";
     let slug = `${base}-${randomSuffix()}`;
-    for (let attempt = 0; attempt < 5; attempt++) {
+    for (let attempt = 1; attempt <= MAX_SLUG_ATTEMPTS; attempt++) {
       const clash = await ctx.db
         .query("tournaments")
         .withIndex("by_slug", (q) => q.eq("slug", slug))
         .unique();
       if (!clash) break;
-      slug = `${base}-${randomSuffix()}`;
+      if (attempt === MAX_SLUG_ATTEMPTS) {
+        throw new ConvexError("Could not allocate a link for that name. Please try again.");
+      }
+      slug = `${base}-${randomSuffix()}${randomSuffix()}`;
     }
 
     const salt = newSalt();
@@ -121,8 +130,14 @@ export const listPublic = query({
   returns: v.array(publicTournamentValidator),
   handler: async (ctx, args) => {
     const limit = Math.min(Math.max(args.limit ?? 24, 1), 100);
-    const rows = await ctx.db.query("tournaments").order("desc").take(limit * 2);
-    return rows.filter((t) => t.isPublic).slice(0, limit).map(publicTournament);
+    // Read straight off the public index: filtering a page of all tournaments
+    // would return nothing once enough recent ones were private.
+    const rows = await ctx.db
+      .query("tournaments")
+      .withIndex("by_public", (q) => q.eq("isPublic", true))
+      .order("desc")
+      .take(limit);
+    return rows.map(publicTournament);
   },
 });
 

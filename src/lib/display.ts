@@ -36,8 +36,3 @@ export const STATUS_LABELS: Record<string, string> = {
   walkover: "Walkover",
 };
 
-/** Sort matches into the order an organiser expects to work through them. */
-export function matchSortKey(match: Doc<"matches">): number {
-  const stage = match.stage === "group" ? 0 : 1_000_000;
-  return stage + (match.groupIndex ?? 0) * 10_000 + match.round * 100 + match.slot;
-}

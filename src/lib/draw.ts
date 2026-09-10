@@ -32,11 +32,6 @@ export interface DraftMatch {
 export interface KnockoutOptions {
   /** Add a third-place playoff fed by the two semi-final losers. */
   thirdPlace: boolean;
-  /**
-   * How many entrants are seeded. Seeds are kept apart using the standard
-   * bracket positions; the rest are placed in the order supplied.
-   */
-  seededCount: number;
 }
 
 /** Round name for a knockout round, counting back from the final. */
@@ -66,10 +61,13 @@ export function seedOrder(size: number): number[] {
   while (order.length < size) {
     const next: number[] = [];
     const rounds = order.length * 2 + 1;
-    for (const seed of order) {
-      next.push(seed);
-      next.push(rounds - seed);
-    }
+    // Every other pair is mirrored, which is what pushes seed 2 to the far end
+    // of the bracket instead of leaving it beside seed 3.
+    order.forEach((seed, index) => {
+      const partner = rounds - seed;
+      if (index % 2 === 0) next.push(seed, partner);
+      else next.push(partner, seed);
+    });
     order = next;
   }
   return order;

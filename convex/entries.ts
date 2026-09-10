@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireOrganiser } from "./lib/auth";
+import { advanceKnockout } from "./lib/progression";
 import type { MutationCtx } from "./_generated/server";
 
 const entryValidator = v.object({
@@ -12,13 +13,24 @@ const entryValidator = v.object({
   playerOne: v.string(),
   playerTwo: v.optional(v.string()),
   club: v.optional(v.string()),
-  phone: v.optional(v.string()),
   seed: v.number(),
   withdrawn: v.boolean(),
   createdAt: v.number(),
 });
 
 const MAX_ENTRIES_PER_EVENT = 256;
+
+/**
+ * Rows as they leave the server for a browser.
+ *
+ * Entrant phone numbers are contact details the organiser collected, not
+ * scoreboard data, so they never travel with the public entry list. The
+ * organiser reads one back through `revealContact`, which checks the PIN.
+ */
+function publicEntry(entry: Doc<"entries">) {
+  const { phone: _phone, ...rest } = entry;
+  return rest;
+}
 
 function clean(value: string | undefined, max: number): string | undefined {
   if (value === undefined) return undefined;
@@ -42,7 +54,7 @@ export const listByEvent = query({
       .query("entries")
       .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
       .collect();
-    return sortEntries(rows);
+    return sortEntries(rows).map(publicEntry);
   },
 });
 
@@ -54,7 +66,7 @@ export const listByTournament = query({
       .query("entries")
       .withIndex("by_tournament", (q) => q.eq("tournamentId", args.tournamentId))
       .collect();
-    return sortEntries(rows);
+    return sortEntries(rows).map(publicEntry);
   },
 });
 
@@ -167,6 +179,24 @@ export const addMany = mutation({
   },
 });
 
+/**
+ * Hand the organiser one entrant's phone number.
+ *
+ * This is a mutation rather than a query so every read goes through the PIN
+ * check that counts wrong attempts and locks the tournament out after too
+ * many. The console calls it when the organiser opens an entrant for editing.
+ */
+export const revealContact = mutation({
+  args: { entryId: v.id("entries"), pin: v.string() },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const entry = await ctx.db.get(args.entryId);
+    if (!entry) throw new ConvexError("That entrant no longer exists.");
+    await requireOrganiser(ctx, entry.tournamentId, args.pin);
+    return entry.phone ?? null;
+  },
+});
+
 export const update = mutation({
   args: {
     entryId: v.id("entries"),
@@ -232,6 +262,12 @@ export const remove = mutation({
       }
       if (Object.keys(patch).length > 0) {
         await ctx.db.patch(match._id, { ...patch, updatedAt: Date.now() });
+        // Clearing the winner here is not enough: the entrant was already
+        // pushed into the next round, so walk the bracket forward and take
+        // them out of every slot they reached.
+        if (match.winnerId === entry._id) {
+          await advanceKnockout(ctx, { ...match, ...patch } as Doc<"matches">, null);
+        }
       }
     }
 

@@ -46,6 +46,25 @@ npm run dev
 NEXT_PUBLIC_CONVEX_URL=https://<your-deployment>.convex.cloud
 ```
 
+## Tests
+
+The pure engines are covered by Vitest. There is no database or browser in the loop, so the
+suite runs in under a second.
+
+```bash
+npm run lint          # ESLint, zero warnings tolerated
+npx tsc --noEmit      # type check
+npm test              # 108 unit tests over scoring, draws, standings and formatting
+npm run test:coverage # same run with a v8 coverage report (80% floor, enforced)
+```
+
+| Suite | Covers |
+| --- | --- |
+| `tests/scoring.test.ts` | set and match evaluation, deuce, golden point, caps, tap-in scoring, undo |
+| `tests/draw.test.ts` | bracket sizing, seeding, byes, round names, round robin, group snaking |
+| `tests/standings.test.ts` | the BWF tiebreak chain, walkovers, scores that no longer parse |
+| `tests/display.test.ts` | entrant names, scoring summaries, match ordering |
+
 ## Scoring rules in one place
 
 Every rule lives in a single `ScoringConfig`:

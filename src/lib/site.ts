@@ -8,7 +8,6 @@ export const SITE = {
   url: process.env.NEXT_PUBLIC_SITE_URL ?? "https://smashboard.vercel.app",
   locale: "en_IN",
   whatsappNumber: "918140081461",
-  supportName: "SmashBoard support",
 } as const;
 
 /** wa.me link with an optional pre-filled message. */

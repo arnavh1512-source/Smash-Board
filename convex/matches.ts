@@ -3,7 +3,12 @@ import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireOrganiser } from "./lib/auth";
 import { matchStatusValidator } from "./schema";
-import { advanceKnockout, fillKnockoutFromGroups, winnerFromSets } from "./lib/progression";
+import {
+  advanceKnockout,
+  clearGroupQualifiers,
+  fillKnockoutFromGroups,
+  winnerFromSets,
+} from "./lib/progression";
 import { evaluateMatch, ScoringError, type ScoringConfig, type SetScore } from "../src/lib/scoring";
 
 const matchValidator = v.object({
@@ -52,10 +57,13 @@ export const listByTournament = query({
   },
 });
 
+/** Group matches come first, then the knockout in bracket order. */
+const STAGE_ORDER = { group: 0, knockout: 1 } as const;
+
 function sortMatches(rows: Doc<"matches">[]): Doc<"matches">[] {
   return [...rows].sort(
     (a, b) =>
-      a.stage.localeCompare(b.stage) ||
+      STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage] ||
       (a.groupIndex ?? 0) - (b.groupIndex ?? 0) ||
       a.round - b.round ||
       Number(a.isThirdPlace) - Number(b.isThirdPlace) ||
@@ -143,6 +151,7 @@ export const setWalkover = mutation({
 
     await advanceKnockout(ctx, { ...match, sets: [], winnerId: args.winnerId }, args.winnerId);
     if (match.stage === "group") await fillKnockoutFromGroups(ctx, event);
+    await ctx.db.patch(match.tournamentId, { updatedAt: Date.now() });
     return null;
   },
 });
@@ -152,7 +161,7 @@ export const reset = mutation({
   args: { matchId: v.id("matches"), pin: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { match } = await loadMatchForOrganiser(ctx, args.matchId, args.pin);
+    const { match, event } = await loadMatchForOrganiser(ctx, args.matchId, args.pin);
     await ctx.db.patch(args.matchId, {
       sets: [],
       status: "scheduled",
@@ -160,6 +169,10 @@ export const reset = mutation({
       updatedAt: Date.now(),
     });
     await advanceKnockout(ctx, { ...match, sets: [], winnerId: null }, null);
+    // The group table has changed, so the qualifiers it fed into the knockout
+    // are no longer decided and must come back out.
+    if (match.stage === "group") await clearGroupQualifiers(ctx, event);
+    await ctx.db.patch(match.tournamentId, { updatedAt: Date.now() });
     return null;
   },
 });

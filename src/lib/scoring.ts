@@ -55,12 +55,6 @@ export type Side = "a" | "b";
 
 export class ScoringError extends Error {}
 
-/** Largest score either side can legally reach in a single set. */
-export function maxSetScore(config: ScoringConfig): number {
-  if (config.endMode === "golden") return config.pointsPerSet;
-  return config.cap ?? Number.MAX_SAFE_INTEGER;
-}
-
 export function validateConfig(config: ScoringConfig): void {
   if (!Number.isInteger(config.pointsPerSet) || config.pointsPerSet < 1 || config.pointsPerSet > 99) {
     throw new ScoringError("Points per set must be a whole number between 1 and 99.");
@@ -129,8 +123,6 @@ export interface MatchOutcome {
   winner: Side | null;
   /** True when the sets supplied decide the match. */
   complete: boolean;
-  /** Sets the leader still needs before the match is decided. */
-  setsRemaining: number;
 }
 
 export function setsToWin(config: ScoringConfig): number {
@@ -173,14 +165,9 @@ export function evaluateMatch(sets: SetScore[], config: ScoringConfig): MatchOut
     points,
     winner,
     complete: winner !== null,
-    setsRemaining: winner ? 0 : needed - Math.max(setsWon.a, setsWon.b),
   };
 }
 
-/** Human-readable score line, e.g. "21-18, 19-21, 21-15". */
-export function formatSets(sets: SetScore[]): string {
-  return sets.map((s) => `${s.a}-${s.b}`).join(", ");
-}
 
 /**
  * Add a point for one side, opening a new set when the previous one is done.

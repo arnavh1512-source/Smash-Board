@@ -51,10 +51,7 @@ export const generate = mutation({
 
     let drafts: DraftMatch[];
     if (event.format === "knockout") {
-      drafts = generateKnockout(ordered, {
-        thirdPlace: event.thirdPlace,
-        seededCount: event.seededCount,
-      });
+      drafts = generateKnockout(ordered, { thirdPlace: event.thirdPlace });
     } else if (event.format === "round_robin") {
       drafts = generateRoundRobin(ordered, 0, event.doubleRound);
     } else {

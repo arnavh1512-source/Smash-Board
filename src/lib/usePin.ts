@@ -1,38 +1,69 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
+
+type Listener = () => void;
+
+/** Components watching one storage key, so a PIN change re-renders all of them. */
+const listeners = new Map<string, Set<Listener>>();
+
+function subscribe(key: string, listener: Listener): () => void {
+  const forKey = listeners.get(key) ?? new Set<Listener>();
+  forKey.add(listener);
+  listeners.set(key, forKey);
+  return () => {
+    forKey.delete(listener);
+    if (forKey.size === 0) listeners.delete(key);
+  };
+}
+
+function readPin(key: string): string | null {
+  try {
+    return window.sessionStorage.getItem(key);
+  } catch {
+    // Private browsing can block storage; the organiser just re-enters the PIN.
+    return null;
+  }
+}
+
+function writePin(key: string, value: string | null): void {
+  try {
+    if (value === null) window.sessionStorage.removeItem(key);
+    else window.sessionStorage.setItem(key, value);
+  } catch {
+    // Ignore: the PIN still works for this page view.
+  }
+  listeners.get(key)?.forEach((listener) => listener());
+}
+
+/** Subscription that never fires — used only to tell the server render apart. */
+const noopSubscribe = (): (() => void) => () => {};
 
 /**
  * The organiser PIN is kept in sessionStorage so a page refresh does not force
  * a re-entry, but closing the tab clears it. It is never written to a cookie or
  * to localStorage, and never leaves the device except as a mutation argument.
+ *
+ * `ready` is false during the server render and the first hydration pass, so a
+ * caller can hold the PIN gate back instead of flashing it at an organiser who
+ * is already unlocked.
  */
 export function usePin(slug: string) {
   const key = `smashboard:pin:${slug}`;
-  const [pin, setPinState] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
 
-  useEffect(() => {
-    try {
-      setPinState(window.sessionStorage.getItem(key));
-    } catch {
-      // Private browsing can block storage; the organiser just re-enters the PIN.
-    }
-    setReady(true);
-  }, [key]);
-
-  const setPin = useCallback(
-    (value: string | null) => {
-      setPinState(value);
-      try {
-        if (value === null) window.sessionStorage.removeItem(key);
-        else window.sessionStorage.setItem(key, value);
-      } catch {
-        // Ignore: the PIN still works for this page view.
-      }
-    },
-    [key],
+  const pin = useSyncExternalStore(
+    useCallback((listener: Listener) => subscribe(key, listener), [key]),
+    useCallback(() => readPin(key), [key]),
+    () => null,
   );
+
+  const ready = useSyncExternalStore(
+    noopSubscribe,
+    () => true,
+    () => false,
+  );
+
+  const setPin = useCallback((value: string | null) => writePin(key, value), [key]);
 
   return { pin, setPin, ready };
 }

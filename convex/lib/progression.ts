@@ -10,6 +10,8 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { computeStandings } from "../../src/lib/standings";
+import { entryName } from "../../src/lib/display";
+import { knockoutFeed, knockoutRoundName } from "../../src/lib/draw";
 import { evaluateMatch, type ScoringConfig } from "../../src/lib/scoring";
 
 export function totalKnockoutRounds(matches: Doc<"matches">[]): number {
@@ -25,10 +27,8 @@ async function knockoutMatches(ctx: MutationCtx, eventId: Id<"events">) {
     .collect();
 }
 
-function labelFor(entry: Doc<"entries"> | null): string | null {
-  if (!entry) return null;
-  return entry.playerTwo ? `${entry.playerOne} / ${entry.playerTwo}` : entry.playerOne;
-}
+/** How a group qualifier slot is labelled at draw time, e.g. "1st in Group A". */
+const QUALIFIER_LABEL = /^\d+(?:st|nd|rd|th) in Group [A-Z]+$/;
 
 /**
  * Push the winner of one knockout match into the next round, and the loser
@@ -59,11 +59,9 @@ export async function advanceKnockout(
     }
   }
 
-  if (match.round >= totalRounds - 1) return;
-
-  const nextRound = match.round + 1;
-  const nextSlot = Math.floor(match.slot / 2);
-  const side = match.slot % 2 === 0 ? "a" : "b";
+  const feed = knockoutFeed(match.round, match.slot, totalRounds);
+  if (!feed) return;
+  const { round: nextRound, slot: nextSlot, side } = feed;
   const next = all.find(
     (m) => !m.isThirdPlace && m.round === nextRound && m.slot === nextSlot,
   );
@@ -76,7 +74,9 @@ export async function advanceKnockout(
   const changed = current !== winnerId;
   const patch: Record<string, unknown> = {
     [`${side}Id`]: winnerId,
-    [`${side}Label`]: winnerId ? null : `Winner of round ${match.round + 1} match ${match.slot + 1}`,
+    [`${side}Label`]: winnerId
+      ? null
+      : `Winner of ${knockoutRoundName(match.round, totalRounds)} ${match.slot + 1}`,
     updatedAt: Date.now(),
   };
 
@@ -138,7 +138,7 @@ export async function fillKnockoutFromGroups(
     .query("entries")
     .withIndex("by_event", (q) => q.eq("eventId", event._id))
     .collect();
-  const nameOf = (id: string) => labelFor(entries.find((e) => e._id === id) ?? null) ?? "";
+  const nameOf = (id: string) => entryName(entries.find((e) => e._id === id));
 
   const groupIndexes = [...new Set(groupMatches.map((m) => m.groupIndex ?? 0))].sort(
     (a, b) => a - b,
@@ -187,18 +187,27 @@ export async function fillKnockoutFromGroups(
   let filled = false;
   for (const match of firstRound) {
     const patch: Record<string, unknown> = {};
-    if (match.aId === null && match.aLabel && lookup.has(match.aLabel)) {
+    // The label stays: it is how `clearGroupQualifiers` finds the slot again if
+    // a group result is edited afterwards, and the UI shows the entrant's name
+    // in preference to it as soon as the slot is filled.
+    if (match.aLabel && lookup.has(match.aLabel) && match.aId !== lookup.get(match.aLabel)) {
       patch.aId = lookup.get(match.aLabel);
-      patch.aLabel = null;
     }
-    if (match.bId === null && match.bLabel && lookup.has(match.bLabel)) {
+    if (match.bLabel && lookup.has(match.bLabel) && match.bId !== lookup.get(match.bLabel)) {
       patch.bId = lookup.get(match.bLabel);
-      patch.bLabel = null;
     }
-    if (Object.keys(patch).length > 0) {
-      await ctx.db.patch(match._id, { ...patch, updatedAt: Date.now() });
-      filled = true;
+    if (Object.keys(patch).length === 0) continue;
+
+    // A qualifier changing means the group table was edited after the knockout
+    // had already started; anything played under the old pairing is void.
+    if (match.sets.length > 0 || match.winnerId) {
+      patch.sets = [];
+      patch.winnerId = null;
+      patch.status = "scheduled";
     }
+    await ctx.db.patch(match._id, { ...patch, updatedAt: Date.now() });
+    await advanceKnockout(ctx, { ...match, ...patch } as Doc<"matches">, null);
+    filled = true;
   }
 
   if (filled) await resolveByes(ctx, event._id);
@@ -213,4 +222,32 @@ export function winnerFromSets(
   const outcome = evaluateMatch(match.sets, scoring);
   if (!outcome.winner) return null;
   return outcome.winner === "a" ? match.aId : match.bId;
+}
+
+/**
+ * Empty every knockout slot that was filled from a group table.
+ *
+ * Called whenever a group result changes: the finishing order may be different
+ * now, so any qualifier already sitting in the knockout — and any result played
+ * under the old pairing — has to come out before the table is read again.
+ */
+export async function clearGroupQualifiers(
+  ctx: MutationCtx,
+  event: Doc<"events">,
+): Promise<void> {
+  const knockout = await knockoutMatches(ctx, event._id);
+  for (const match of knockout) {
+    if (match.round !== 0 || match.isThirdPlace) continue;
+    const patch: Record<string, unknown> = {};
+    if (match.aId !== null && match.aLabel && QUALIFIER_LABEL.test(match.aLabel)) patch.aId = null;
+    if (match.bId !== null && match.bLabel && QUALIFIER_LABEL.test(match.bLabel)) patch.bId = null;
+    if (Object.keys(patch).length === 0) continue;
+
+    patch.sets = [];
+    patch.winnerId = null;
+    patch.status = "scheduled";
+    patch.updatedAt = Date.now();
+    await ctx.db.patch(match._id, patch);
+    await advanceKnockout(ctx, { ...match, ...patch } as Doc<"matches">, null);
+  }
 }

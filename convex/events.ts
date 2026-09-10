@@ -19,7 +19,6 @@ const eventValidator = v.object({
   format: formatValidator,
   scoring: scoringValidator,
   thirdPlace: v.boolean(),
-  seededCount: v.number(),
   groupCount: v.number(),
   advancePerGroup: v.number(),
   doubleRound: v.boolean(),
@@ -59,7 +58,6 @@ export const create = mutation({
     format: formatValidator,
     scoring: scoringValidator,
     thirdPlace: v.boolean(),
-    seededCount: v.number(),
     groupCount: v.number(),
     advancePerGroup: v.number(),
     doubleRound: v.boolean(),
@@ -93,7 +91,6 @@ export const create = mutation({
       format: args.format,
       scoring: args.scoring,
       thirdPlace: args.thirdPlace,
-      seededCount: Math.max(0, Math.min(args.seededCount, 64)),
       groupCount: args.groupCount,
       advancePerGroup: args.advancePerGroup,
       doubleRound: args.doubleRound,
@@ -113,7 +110,6 @@ export const update = mutation({
     format: v.optional(formatValidator),
     scoring: v.optional(scoringValidator),
     thirdPlace: v.optional(v.boolean()),
-    seededCount: v.optional(v.number()),
     groupCount: v.optional(v.number()),
     advancePerGroup: v.optional(v.number()),
     doubleRound: v.optional(v.boolean()),
@@ -143,9 +139,6 @@ export const update = mutation({
       patch.scoring = args.scoring;
     }
     if (args.thirdPlace !== undefined) patch.thirdPlace = args.thirdPlace;
-    if (args.seededCount !== undefined) {
-      patch.seededCount = Math.max(0, Math.min(args.seededCount, 64));
-    }
     if (args.groupCount !== undefined) {
       if (args.groupCount < 1 || args.groupCount > 32) {
         throw new ConvexError("Groups must be between 1 and 32.");
