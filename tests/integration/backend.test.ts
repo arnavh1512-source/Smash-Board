@@ -24,11 +24,22 @@ let tournamentId: Id<"tournaments">;
 let slug: string;
 let eventId: Id<"events">;
 
-/** Assert that a call fails, and hand back the message for inspection. */
+/**
+ * Assert that a call fails, and hand back the message for inspection.
+ *
+ * A production Convex deployment redacts `error.message` down to
+ * "[Request ID: ...] Server Error" but still ships the `ConvexError` payload in
+ * `error.data`, so read that first. This mirrors `errorMessage()` in
+ * src/lib/usePin.ts, which is how the UI surfaces the same failures.
+ */
 async function rejects(call: Promise<unknown>): Promise<string> {
   try {
     await call;
   } catch (error) {
+    if (error && typeof error === "object" && "data" in error) {
+      const data = (error as { data: unknown }).data;
+      if (typeof data === "string") return data;
+    }
     return error instanceof Error ? error.message : String(error);
   }
   throw new Error("Expected the call to be rejected, but it succeeded.");

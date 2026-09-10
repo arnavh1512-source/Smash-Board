@@ -5,7 +5,7 @@ export const SITE = {
   tagline: "Badminton tournament scoring that everyone can follow live",
   description:
     "Run a badminton tournament end to end: add entrants, make the draw, enter scores as each game finishes, and give every player a live link to follow the results.",
-  url: process.env.NEXT_PUBLIC_SITE_URL ?? "https://smashboard.vercel.app",
+  url: process.env.NEXT_PUBLIC_SITE_URL ?? "https://smash-board.vercel.app",
   locale: "en_IN",
   whatsappNumber: "918140081461",
 } as const;

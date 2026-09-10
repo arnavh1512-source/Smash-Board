@@ -97,22 +97,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
         <ConvexClientProvider>
           <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/85 backdrop-blur">
-            <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-              <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
-                <span className="grid h-8 w-8 place-items-center rounded-lg bg-emerald-600 text-white">
+            <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
+              <Link href="/" className="flex min-w-0 items-center gap-2 font-semibold tracking-tight">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-emerald-600 text-white">
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
                     <path d="M14.7 2.4a3 3 0 0 1 4.2 4.2l-6.1 6.1-4.2-4.2 6.1-6.1Zm-7.5 7.5 4.2 4.2-1.4 1.4a3 3 0 0 1-4.2-4.2l1.4-1.4Zm-2.6 8.4 2.6 2.6-1.9 1.9a1.8 1.8 0 0 1-2.6-2.6l1.9-1.9Z" />
                   </svg>
                 </span>
-                <span>{SITE.name}</span>
+                <span className="truncate">{SITE.name}</span>
               </Link>
-              <nav className="flex items-center gap-4 text-sm font-medium text-slate-600">
+              <nav className="flex shrink-0 items-center gap-3 text-sm font-medium text-slate-600 sm:gap-4">
                 <Link href="/" className="hover:text-emerald-700">
                   Tournaments
                 </Link>
                 <Link
                   href="/#create"
-                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-white hover:bg-emerald-700"
+                  className="whitespace-nowrap rounded-lg bg-emerald-600 px-3 py-1.5 text-white hover:bg-emerald-700"
                 >
                   New tournament
                 </Link>
