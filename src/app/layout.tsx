@@ -107,7 +107,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <span className="truncate">{SITE.name}</span>
               </Link>
               <nav className="flex shrink-0 items-center gap-3 text-sm font-medium text-slate-600 sm:gap-4">
-                <Link href="/" className="hover:text-emerald-700">
+                <Link href="/" className="hidden hover:text-emerald-700 sm:inline">
                   Tournaments
                 </Link>
                 <Link
