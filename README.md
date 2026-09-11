@@ -17,20 +17,28 @@ a score entered by the organiser appears on every open scoreboard without a refr
   an entrant scrubs them from the draw so no match points at a deleted row.
 - **Results** — enter a score as each game finishes. Winners advance automatically, corrections
   ripple forward, and group tables re-sort in the BWF tiebreak order.
+- **Referees** — a second, scoring-only PIN opens `/t/<slug>/score`. Referees enter results and
+  nothing else: they cannot touch the draw, the entrants, the settings or the tournament itself.
+- **Order of play** — every category laid out on one timetable across the courts the hall has,
+  with a guaranteed rest between a player's matches and another category filling the court while
+  they take it. Readable in time order or court by court, by organiser and public alike.
 
 ## Layout
 
 ```
 convex/            backend: schema, auth, tournaments, events, entries, draws, matches
 convex/lib/        organiser PIN checks and draw progression
-src/lib/           pure logic shared by backend and UI: scoring, draw generation, standings
-src/app/           routes: landing, /t/[slug] public view, /t/[slug]/manage organiser console
+src/lib/           pure logic shared by backend and UI: scoring, draw generation, standings,
+                   order-of-play planning
+src/app/           routes: landing, /t/[slug] public view, /t/[slug]/manage organiser console,
+                   /t/[slug]/score referee console
 src/components/    UI
 ```
 
-The scoring engine (`src/lib/scoring.ts`), draw generator (`src/lib/draw.ts`) and standings
-calculator (`src/lib/standings.ts`) are pure and dependency-free, so the same code validates a
-score on the server and previews a draw in the browser.
+The scoring engine (`src/lib/scoring.ts`), draw generator (`src/lib/draw.ts`), standings
+calculator (`src/lib/standings.ts`) and order-of-play planner (`src/lib/schedule.ts`) are pure and
+dependency-free, so the same code validates a score on the server and previews a draw in the
+browser.
 
 ## Running it
 
@@ -54,9 +62,13 @@ suite runs in under a second.
 ```bash
 npm run lint          # ESLint, zero warnings tolerated
 npx tsc --noEmit      # type check
-npm test              # 108 unit tests over scoring, draws, standings and formatting
+npm test              # 123 unit tests over scoring, draws, standings, scheduling and formatting
 npm run test:coverage # same run with a v8 coverage report (80% floor, enforced)
+npm run test:integration  # runs against a live Convex deployment; see the note below
 ```
+
+The integration suites talk to the deployment in `.env.local` and create their own throwaway
+tournaments, so run them against a development deployment, never production.
 
 | Suite | Covers |
 | --- | --- |
@@ -64,6 +76,27 @@ npm run test:coverage # same run with a v8 coverage report (80% floor, enforced)
 | `tests/draw.test.ts` | bracket sizing, seeding, byes, round names, round robin, group snaking |
 | `tests/standings.test.ts` | the BWF tiebreak chain, walkovers, scores that no longer parse |
 | `tests/display.test.ts` | entrant names, scoring summaries, match ordering |
+| `tests/schedule.test.ts` | court packing, rest between matches, the court-count cap, clock maths |
+| `tests/integration/backend.test.ts` | the tournament lifecycle against a real deployment |
+| `tests/integration/referee.test.ts` | what the referee PIN opens, what it refuses, the lockout |
+
+## Deploying
+
+The frontend and the backend ship together. Vercel's build command (in `vercel.json`) pushes the
+Convex functions first and only then builds the site, so a release can never leave the browser
+calling a function the deployment does not have:
+
+```
+npx convex deploy --cmd 'npm run build'
+```
+
+That needs one secret. In the Convex dashboard, under Settings → Deploy Keys, generate a
+**production deploy key**, then add it to the Vercel project as `CONVEX_DEPLOY_KEY` for the
+Production environment. `convex deploy` sets `NEXT_PUBLIC_CONVEX_URL` for the build itself, so it
+does not need to be configured separately in production.
+
+Preview deployments need their own `NEXT_PUBLIC_SITE_URL`; without it, share links in a preview
+point at production.
 
 ## Scoring rules in one place
 

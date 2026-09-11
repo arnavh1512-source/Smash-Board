@@ -7,6 +7,12 @@ import { BracketView } from "./BracketView";
 import { StandingsTable } from "./StandingsTable";
 import { MatchRow, type EntryLookup } from "./MatchRow";
 
+const FORMAT_LABELS: Record<string, string> = {
+  knockout: "Knockout",
+  round_robin: "Round robin",
+  groups_knockout: "Groups into a knockout",
+};
+
 /**
  * One category's draw: groups and their tables first (when the format has
  * them), then the knockout bracket. Used by both the public page and the
@@ -29,18 +35,20 @@ export function EventPanel({
 
   if (matches.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600">
-        The draw for {event.name} has not been made yet.
-      </p>
+      <p className="note mx-4 my-4">The draw for {event.name} has not been made yet.</p>
     );
   }
 
   const groupIndexes = [...new Set(groupMatches.map((m) => m.groupIndex ?? 0))].sort((a, b) => a - b);
   const isRoundRobinOnly = event.format === "round_robin";
+  const entrants = new Set(matches.flatMap((m) => [m.aId, m.bId]).filter(Boolean)).size;
 
   return (
-    <div className="space-y-8">
-      <p className="text-sm text-slate-600">{scoringSummary(scoring)}</p>
+    <div>
+      <p className="m-0 px-4 py-2.5 text-[11px] tracking-[0.04em] opacity-60">
+        {FORMAT_LABELS[event.format] ?? event.format} · {entrants} entrants ·{" "}
+        {scoringSummary(scoring)}
+      </p>
 
       {groupIndexes.map((groupIndex) => {
         const inGroup = groupMatches.filter((m) => (m.groupIndex ?? 0) === groupIndex);
@@ -48,29 +56,28 @@ export function EventPanel({
           ? "Standings"
           : `Group ${String.fromCharCode(65 + groupIndex)}`;
         return (
-          <section key={groupIndex} className="space-y-3">
-            <h3 className="text-lg font-semibold tracking-tight">{heading}</h3>
-            <StandingsTable matches={inGroup} entries={entries} scoring={scoring} />
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {inGroup.map((match) => (
-                <MatchRow
-                  key={match._id}
-                  match={match}
-                  entries={entries}
-                  title={`Round ${match.round + 1}`}
-                  action={renderAction?.(match)}
-                />
-              ))}
+          <section key={groupIndex}>
+            <header className="rule-t2 rule-b bg-[var(--color-surface)] px-4 py-2.5">
+              <h6 className="m-0">{heading}</h6>
+            </header>
+            <div className="py-3">
+              <StandingsTable matches={inGroup} entries={entries} scoring={scoring} />
             </div>
+            {inGroup.map((match) => (
+              <MatchRow
+                key={match._id}
+                match={match}
+                entries={entries}
+                title={`Round ${match.round + 1}`}
+                action={renderAction?.(match)}
+              />
+            ))}
           </section>
         );
       })}
 
       {knockoutMatches.length > 0 ? (
-        <section className="space-y-3">
-          <h3 className="text-lg font-semibold tracking-tight">Knockout draw</h3>
-          <BracketView matches={knockoutMatches} entries={entries} renderAction={renderAction} />
-        </section>
+        <BracketView matches={knockoutMatches} entries={entries} renderAction={renderAction} />
       ) : null}
     </div>
   );

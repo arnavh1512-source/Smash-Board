@@ -1,22 +1,28 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { Alert, Button, Card, Field, Input } from "@/components/ui";
-import { errorMessage } from "@/lib/usePin";
+import { Button, Field, Input } from "@/components/ui";
+import { errorMessage, type PinRole } from "@/lib/usePin";
 
-/** Asks for the organiser PIN and hands it back only once the server accepts it. */
+/** Asks for a PIN and hands it back only once the server accepts it. */
 export function PinGate({
   tournamentId,
   tournamentName,
+  slug,
+  role = "organiser",
   onUnlock,
 }: {
   tournamentId: Id<"tournaments">;
   tournamentName: string;
+  slug: string;
+  role?: PinRole;
   onUnlock: (pin: string) => void;
 }) {
+  const referee = role === "referee";
   const verify = useMutation(api.tournaments.verifyPin);
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +33,7 @@ export function PinGate({
     setError(null);
     setBusy(true);
     try {
-      await verify({ tournamentId, pin });
+      await verify({ tournamentId, pin, role });
       onUnlock(pin);
     } catch (caught) {
       setError(errorMessage(caught));
@@ -37,32 +43,43 @@ export function PinGate({
   }
 
   return (
-    <div className="mx-auto max-w-md px-4 py-16">
-      <Card>
-        <h1 className="text-xl font-bold tracking-tight">Organiser sign-in</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Enter the PIN for {tournamentName} to make changes.
-        </p>
-        <form onSubmit={submit} className="mt-5 space-y-4">
-          <Field label="Organiser PIN">
-            <Input
-              type="password"
-              required
-              autoFocus
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              autoComplete="current-password"
-            />
-          </Field>
-          {error ? <Alert kind="error">{error}</Alert> : null}
-          <Button type="submit" disabled={busy} className="w-full">
-            {busy ? "Checking…" : "Unlock"}
-          </Button>
-        </form>
-        <p className="mt-4 text-xs text-slate-500">
-          After eight wrong PINs the tournament locks for ten minutes.
-        </p>
-      </Card>
+    <div className="mx-auto flex w-full max-w-md flex-col gap-4 px-4 py-6">
+      <h6 className="m-0 opacity-55">{tournamentName}</h6>
+      <h3 className="m-0">{referee ? "Referee sign-in" : "Organiser sign-in"}</h3>
+      <p className="m-0 text-[13px] opacity-75">
+        {referee
+          ? "Enter the referee PIN the organiser gave you. It lets you enter scores and nothing else."
+          : "The PIN unlocks the console for this device only."}{" "}
+        After eight wrong tries the tournament locks for ten minutes.
+      </p>
+
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <Field label={referee ? "Referee PIN" : "Organiser PIN"}>
+          <Input
+            type="password"
+            required
+            autoFocus
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            autoComplete="current-password"
+            className="min-h-[54px] text-[22px] tracking-[0.5em]"
+          />
+        </Field>
+
+        {error ? (
+          <p role="alert" className="m-0 text-[13px] text-[var(--color-accent-ink)]">
+            {error}
+          </p>
+        ) : null}
+
+        <Button type="submit" block disabled={busy} className="min-h-[50px] text-[15px]">
+          {busy ? "Checking…" : referee ? "Start scoring" : "Unlock the console"}
+        </Button>
+      </form>
+
+      <Link href={`/t/${slug}`} className="btn btn-secondary btn-block min-h-[46px]">
+        Back to the scoreboard
+      </Link>
     </div>
   );
 }

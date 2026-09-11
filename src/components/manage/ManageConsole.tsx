@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
-import { Alert, Button, Card, Spinner, cx } from "@/components/ui";
+import { Alert, Button, Spinner, cx } from "@/components/ui";
 import { EventPanel } from "@/components/tournament/EventPanel";
 import { ShareBar } from "@/components/tournament/ShareBar";
 import { useTournamentData } from "@/components/tournament/useTournamentData";
@@ -16,19 +16,26 @@ import { PinGate } from "./PinGate";
 import { EventForm } from "./EventForm";
 import { EntryManager } from "./EntryManager";
 import { DrawPanel } from "./DrawPanel";
+import { SchedulePanel } from "./SchedulePanel";
 import { ScoreDialog } from "./ScoreDialog";
 import { TournamentSettings } from "./TournamentSettings";
+import { DEFAULT_SCHEDULE } from "@/lib/schedule";
+
+/** Who is holding the console. A referee may enter scores and nothing else. */
+export type ConsoleRole = "organiser" | "referee";
 
 const TABS = [
   { id: "scores", label: "Scores" },
   { id: "entrants", label: "Entrants" },
   { id: "draw", label: "Draw" },
-  { id: "categories", label: "Categories" },
-  { id: "settings", label: "Settings" },
+  { id: "schedule", label: "Order" },
+  { id: "categories", label: "Events" },
+  { id: "settings", label: "Setup" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
 
+/** The category strip. Referees see it too — they still have to pick a court. */
 function EventTabs({
   events,
   activeId,
@@ -38,16 +45,20 @@ function EventTabs({
   activeId: string | null;
   onSelect: (id: string) => void;
 }) {
-  if (events.length === 0) return null;
+  if (events.length < 2) return null;
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="rule-b flex overflow-x-auto">
       {events.map((event) => (
         <button
           key={event._id}
+          type="button"
           onClick={() => onSelect(event._id)}
+          aria-pressed={event._id === activeId}
           className={cx(
-            "rounded-lg px-3 py-1.5 text-sm font-medium transition",
-            event._id === activeId ? "bg-emerald-600 text-white" : "bg-white text-slate-700 hover:bg-slate-100",
+            "btn min-h-11 shrink-0 whitespace-nowrap border-0 border-b-2 px-3.5 text-[12px]",
+            event._id === activeId
+              ? "border-b-[var(--color-accent)] font-extrabold"
+              : "border-b-transparent opacity-55",
           )}
         >
           {event.name}
@@ -72,32 +83,31 @@ function CategoryList({
   if (events.length === 0) return null;
 
   return (
-    <Card>
-      <h3 className="text-lg font-semibold tracking-tight">Categories</h3>
+    <div>
+      <header className="rule-t2 rule-b bg-[var(--color-surface)] px-4 py-2.5">
+        <h6 className="m-0">All categories</h6>
+      </header>
       {error ? (
-        <div className="mt-3">
+        <div className="px-4 pt-3">
           <Alert kind="error">{error}</Alert>
         </div>
       ) : null}
-      <ul className="mt-4 space-y-2">
+      <ul className="m-0 list-none p-0">
         {events.map((event) => (
-          <li
-            key={event._id}
-            className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-slate-200 p-3"
-          >
+          <li key={event._id} className="rule-b flex items-center gap-3 px-4 py-3">
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-slate-900">{event.name}</p>
-              <p className="truncate text-xs text-slate-500">
+              <p className="m-0 truncate text-[14px] font-extrabold leading-tight">{event.name}</p>
+              <p className="m-0 truncate text-[11px] opacity-55">
                 {event.teamSize === 2 ? "Doubles" : "Singles"} ·{" "}
                 {scoringSummary(event.scoring as ScoringConfig)}
               </p>
             </div>
-            <Button variant="ghost" className="px-2 py-1" onClick={() => onEdit(event)}>
+            <Button variant="ghost" className="min-h-10" onClick={() => onEdit(event)}>
               Edit
             </Button>
             <Button
-              variant="danger"
-              className="px-2 py-1"
+              variant="ghost"
+              className="min-h-10 opacity-70"
               onClick={async () => {
                 if (!window.confirm(`Delete ${event.name} with all its entrants and scores?`)) return;
                 setError(null);
@@ -113,17 +123,24 @@ function CategoryList({
           </li>
         ))}
       </ul>
-    </Card>
+    </div>
   );
 }
 
 /**
- * The organiser's whole workspace: PIN gate, then one tab per job. Every panel
- * reads the same live subscriptions as the public page, so a saved score shows
- * up on the scoreboard immediately.
+ * The console behind a PIN: one tab per job for an organiser, and the scores
+ * tab alone for a referee. Every panel reads the same live subscriptions as the
+ * public page, so a saved score shows up on the scoreboard immediately.
  */
-export function ManageConsole({ slug }: { slug: string }) {
-  const { pin, setPin, ready } = usePin(slug);
+export function ManageConsole({
+  slug,
+  role = "organiser",
+}: {
+  slug: string;
+  role?: ConsoleRole;
+}) {
+  const referee = role === "referee";
+  const { pin, setPin, ready } = usePin(slug, role);
   const { tournament, events, entries, matches, entryMap, loading } = useTournamentData(slug);
   const [tab, setTab] = useState<TabId>("scores");
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
@@ -131,21 +148,16 @@ export function ManageConsole({ slug }: { slug: string }) {
   const [showEventForm, setShowEventForm] = useState(false);
   const [scoringMatch, setScoringMatch] = useState<Doc<"matches"> | null>(null);
 
-  if (!ready || loading) {
-    return (
-      <div className="mx-auto max-w-6xl px-4 py-16">
-        <Spinner label="Loading console" />
-      </div>
-    );
-  }
+  if (!ready || loading) return <Spinner label="Loading console" />;
 
   if (!tournament) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold">Tournament not found</h1>
-        <Link href="/" className="mt-4 inline-block text-emerald-700 hover:underline">
-          Back to all tournaments
-        </Link>
+      <div className="px-4 py-10">
+        <h3 className="m-0">Tournament not found</h3>
+        <p className="mt-2 text-[13px] opacity-70">
+          The link may be wrong, or the tournament has been deleted.
+        </p>
+        <Link href="/">Back to all tournaments</Link>
       </div>
     );
   }
@@ -153,6 +165,8 @@ export function ManageConsole({ slug }: { slug: string }) {
   if (!pin) {
     return (
       <PinGate
+        slug={slug}
+        role={role}
         tournamentId={tournament._id}
         tournamentName={tournament.name}
         onUnlock={setPin}
@@ -160,66 +174,79 @@ export function ManageConsole({ slug }: { slug: string }) {
     );
   }
 
+  const visibleTabs = referee ? TABS.filter((option) => option.id === "scores") : TABS;
   const activeEvent = events.find((e) => e._id === activeEventId) ?? events[0] ?? null;
   const eventEntries = activeEvent ? entries.filter((e) => e.eventId === activeEvent._id) : [];
   const eventMatches = activeEvent ? matches.filter((m) => m.eventId === activeEvent._id) : [];
+  const matchMinutes = tournament.schedule?.matchMinutes ?? DEFAULT_SCHEDULE.matchMinutes;
   // The live dialog needs the freshest copy of the match, not the one captured on click.
   const openMatch = scoringMatch ? matches.find((m) => m._id === scoringMatch._id) ?? null : null;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">
-            Organiser console
-          </p>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{tournament.name}</h1>
-          <Link
-            href={`/t/${tournament.slug}`}
-            className="mt-1 inline-block text-sm text-slate-500 hover:text-emerald-700"
-          >
-            View the public scoreboard
-          </Link>
-        </div>
-        <div className="flex flex-col items-start gap-2 sm:items-end">
-          <ShareBar name={tournament.name} path={`/t/${tournament.slug}`} />
-          <Button variant="ghost" className="px-2 py-1" onClick={() => setPin(null)}>
-            Lock the console
+    <div className="mx-auto w-full max-w-3xl">
+      <header className="rule-b2 flex flex-col gap-3 px-4 py-4">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="m-0 text-[11px] uppercase tracking-[0.08em] text-[var(--color-accent-ink)]">
+              {referee ? "Referee console" : "Organiser console"}
+            </p>
+            <h2 className="m-0 mt-1 text-[26px]">{tournament.name}</h2>
+            <Link href={`/t/${tournament.slug}`} className="text-[12px]">
+              View the public scoreboard
+            </Link>
+          </div>
+          <Button variant="ghost" className="min-h-10 text-[12px]" onClick={() => setPin(null)}>
+            Lock
           </Button>
         </div>
+        <ShareBar name={tournament.name} path={`/t/${tournament.slug}`} compact />
       </header>
 
-      <nav className="mt-6 flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
-        {TABS.map((option) => (
-          <button
-            key={option.id}
-            onClick={() => setTab(option.id)}
-            className={cx(
-              "rounded-lg px-3 py-1.5 text-sm font-medium transition",
-              tab === option.id ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900",
-            )}
-          >
-            {option.label}
-          </button>
-        ))}
-      </nav>
+      {visibleTabs.length > 1 ? (
+        <nav className="rule-b2 flex">
+          {visibleTabs.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setTab(option.id)}
+              aria-pressed={tab === option.id}
+              className={cx(
+                "btn min-h-12 flex-1 justify-center border-0 border-b-2 px-1 text-[12px]",
+                tab === option.id
+                  ? "border-b-[var(--color-accent)] font-extrabold"
+                  : "border-b-transparent opacity-55",
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </nav>
+      ) : null}
 
       {events.length === 0 && tab !== "settings" ? (
-        <div className="mt-6 space-y-4">
-          <Alert kind="info">
-            Add a category first — Men&apos;s Singles, U-17 Doubles, whatever your event needs. Each
-            one carries its own scoring rules and its own draw.
-          </Alert>
-          <EventForm
-            tournamentId={tournament._id}
-            pin={pin}
-            event={null}
-            onDone={() => setShowEventForm(false)}
-          />
-        </div>
+        referee ? (
+          <div className="px-4 py-5">
+            <Alert kind="info">
+              Nothing to score yet — the organiser has not added a category.
+            </Alert>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4 px-4 py-5">
+            <Alert kind="info">
+              Add a category first — Men&apos;s Singles, U-17 Doubles, whatever your event needs.
+              Each one carries its own scoring rules and its own draw.
+            </Alert>
+            <EventForm
+              tournamentId={tournament._id}
+              pin={pin}
+              event={null}
+              onDone={() => setShowEventForm(false)}
+            />
+          </div>
+        )
       ) : (
-        <div className="mt-6 space-y-6">
-          {tab !== "settings" && tab !== "categories" ? (
+        <div>
+          {tab !== "settings" && tab !== "categories" && tab !== "schedule" ? (
             <EventTabs
               events={events}
               activeId={activeEvent?._id ?? null}
@@ -233,8 +260,12 @@ export function ManageConsole({ slug }: { slug: string }) {
               matches={eventMatches}
               entries={entryMap}
               renderAction={(match) => (
-                <Button variant="secondary" className="px-2 py-1" onClick={() => setScoringMatch(match)}>
-                  Score
+                <Button
+                  variant="secondary"
+                  className="min-h-10 text-[12px]"
+                  onClick={() => setScoringMatch(match)}
+                >
+                  Score this match
                 </Button>
               )}
             />
@@ -248,13 +279,27 @@ export function ManageConsole({ slug }: { slug: string }) {
             <DrawPanel
               event={activeEvent}
               playingCount={eventEntries.filter((entry) => !entry.withdrawn).length}
-              hasMatches={eventMatches.length > 0}
+              matches={eventMatches}
+              entries={entryMap}
+              matchMinutes={matchMinutes}
               pin={pin}
             />
           ) : null}
 
+          {tab === "schedule" ? (
+            <SchedulePanel
+              tournamentId={tournament._id}
+              startDate={tournament.startDate}
+              schedule={tournament.schedule}
+              pin={pin}
+              matches={matches}
+              events={events}
+              entries={entryMap}
+            />
+          ) : null}
+
           {tab === "categories" ? (
-            <>
+            <div className="flex flex-col gap-4 pt-4">
               {showEventForm || editingEvent ? (
                 <EventForm
                   tournamentId={tournament._id}
@@ -266,7 +311,11 @@ export function ManageConsole({ slug }: { slug: string }) {
                   }}
                 />
               ) : (
-                <Button onClick={() => setShowEventForm(true)}>Add a category</Button>
+                <div className="px-4">
+                  <Button block className="min-h-12" onClick={() => setShowEventForm(true)}>
+                    Add a category
+                  </Button>
+                </div>
               )}
               <CategoryList
                 events={events}
@@ -276,7 +325,7 @@ export function ManageConsole({ slug }: { slug: string }) {
                   setShowEventForm(false);
                 }}
               />
-            </>
+            </div>
           ) : null}
 
           {tab === "settings" ? (

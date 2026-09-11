@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CreateTournamentForm } from "@/components/home/CreateTournamentForm";
 import { PublicTournamentList } from "@/components/home/PublicTournamentList";
-import { SITE } from "@/lib/site";
+import { SITE, whatsappLink } from "@/lib/site";
 
 const FEATURES = [
   {
@@ -22,57 +22,80 @@ const FEATURES = [
   },
 ];
 
+const STEPS = [
+  "Create the tournament and pick an organiser PIN.",
+  "Add categories with the scoring you want, then the entrants.",
+  "Generate the draw and enter scores as games finish.",
+  "Share the public link on WhatsApp — everyone follows it live.",
+];
+
 export default function HomePage() {
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:py-14">
-      <section className="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-start">
-        <div>
-          <p className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-800">
-            Free to run · No sign-up for players
-          </p>
-          <h1 className="mt-4 text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">
-            Run your badminton tournament and let everyone watch the scores live.
-          </h1>
-          <p className="mt-4 text-lg text-slate-600">{SITE.description}</p>
-
-          <dl className="mt-8 grid gap-4 sm:grid-cols-2">
-            {FEATURES.map((feature) => (
-              <div key={feature.title} className="rounded-xl border border-slate-200 bg-white p-4">
-                <dt className="font-semibold text-slate-900">{feature.title}</dt>
-                <dd className="mt-1 text-sm text-slate-600">{feature.body}</dd>
-              </div>
-            ))}
-          </dl>
-
-          <ol className="mt-8 space-y-2 text-sm text-slate-600">
-            <li>
-              <strong className="text-slate-900">1.</strong> Create the tournament and pick an organiser PIN.
-            </li>
-            <li>
-              <strong className="text-slate-900">2.</strong> Add categories with the scoring you want, then the entrants.
-            </li>
-            <li>
-              <strong className="text-slate-900">3.</strong> Generate the draw and enter scores as games finish.
-            </li>
-            <li>
-              <strong className="text-slate-900">4.</strong> Share the public link on WhatsApp — everyone follows it live.
-            </li>
-          </ol>
-        </div>
-
-        <div id="create" className="scroll-mt-24">
-          <CreateTournamentForm />
-        </div>
+    <div className="mx-auto w-full max-w-3xl">
+      <section className="rule-b2 px-4 pb-5 pt-6">
+        <span className="tag tag-accent">Free to run · No sign-up for players</span>
+        <h1 className="mt-3 text-[31px]">
+          Run your badminton tournament and let everyone watch the scores live.
+        </h1>
+        <p className="mt-2 mb-4 text-[14px] opacity-80 [text-wrap:pretty]">{SITE.description}</p>
+        <Link href="/#create" className="btn btn-primary btn-block min-h-12 text-[15px]">
+          Create a tournament
+        </Link>
       </section>
 
-      <section className="mt-14">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-2xl font-bold tracking-tight">Live and recent tournaments</h2>
-          <Link href="/#create" className="text-sm font-medium text-emerald-700 hover:underline">
+      {/* The 2px gaps are the divider showing through, which is how the design draws its grid. */}
+      <dl className="rule-b2 grid grid-cols-2 gap-0.5 bg-[var(--color-divider)]">
+        {FEATURES.map((feature) => (
+          <div key={feature.title} className="bg-[var(--color-bg)] px-4 py-3.5">
+            <dt className="text-[14px] font-extrabold leading-tight">{feature.title}</dt>
+            <dd className="mt-1.5 text-[12px] leading-relaxed opacity-75">{feature.body}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <section className="rule-b2 px-4 py-5">
+        <h6>How it works</h6>
+        <ol className="mt-3 flex list-none flex-col gap-2.5 p-0">
+          {STEPS.map((step, index) => (
+            <li key={step} className="flex gap-3">
+              <span className="num w-4 shrink-0 text-[13px] font-extrabold text-[var(--color-accent-ink)]">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span className="text-[13px] opacity-85">{step}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <div id="create" className="scroll-mt-16">
+        <CreateTournamentForm />
+      </div>
+
+      <section className="rule-b2 px-4 py-5">
+        <div className="flex items-baseline justify-between gap-3">
+          <h4 className="m-0">Live and recent</h4>
+          <Link href="/#create" className="text-[13px]">
             Start your own
           </Link>
         </div>
         <PublicTournamentList />
+      </section>
+
+      <section className="bg-[var(--color-accent)] px-4 py-[22px] text-[#f3f2f2]">
+        <p className="m-0 text-[24px] font-extrabold leading-[1.1]">
+          One link. Everyone watching.
+        </p>
+        <p className="mb-4 mt-2 text-[13px] opacity-90">
+          Send the scoreboard to the club group and stop answering “what’s the score?”.
+        </p>
+        <a
+          href={whatsappLink(`Hi, I want to run a tournament on ${SITE.name}.`)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn btn-block min-h-[46px] bg-[#f3f2f2] text-[#201e1d] hover:bg-white hover:text-[#201e1d]"
+        >
+          Ask us anything on WhatsApp
+        </a>
       </section>
     </div>
   );

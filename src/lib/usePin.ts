@@ -39,17 +39,26 @@ function writePin(key: string, value: string | null): void {
 /** Subscription that never fires — used only to tell the server render apart. */
 const noopSubscribe = (): (() => void) => () => {};
 
+/** Which PIN a screen is holding. The two are stored under separate keys so a
+ * referee unlocking on a shared phone can never inherit organiser access. */
+export type PinRole = "organiser" | "referee";
+
+const STORAGE_PREFIX: Record<PinRole, string> = {
+  organiser: "smashboard:pin:",
+  referee: "smashboard:refpin:",
+};
+
 /**
- * The organiser PIN is kept in sessionStorage so a page refresh does not force
- * a re-entry, but closing the tab clears it. It is never written to a cookie or
+ * The PIN is kept in sessionStorage so a page refresh does not force a
+ * re-entry, but closing the tab clears it. It is never written to a cookie or
  * to localStorage, and never leaves the device except as a mutation argument.
  *
  * `ready` is false during the server render and the first hydration pass, so a
- * caller can hold the PIN gate back instead of flashing it at an organiser who
- * is already unlocked.
+ * caller can hold the PIN gate back instead of flashing it at someone who is
+ * already unlocked.
  */
-export function usePin(slug: string) {
-  const key = `smashboard:pin:${slug}`;
+export function usePin(slug: string, role: PinRole = "organiser") {
+  const key = `${STORAGE_PREFIX[role]}${slug}`;
 
   const pin = useSyncExternalStore(
     useCallback((listener: Listener) => subscribe(key, listener), [key]),

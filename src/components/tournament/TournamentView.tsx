@@ -2,11 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Badge, Spinner, cx } from "@/components/ui";
+import { Badge, LiveDot, Spinner, cx } from "@/components/ui";
+import { CourtGrid } from "./CourtGrid";
 import { EventPanel } from "./EventPanel";
 import { MatchRow } from "./MatchRow";
+import { OrderOfPlay } from "./OrderOfPlay";
 import { ShareBar } from "./ShareBar";
 import { useTournamentData } from "./useTournamentData";
+import { DEFAULT_SCHEDULE } from "@/lib/schedule";
 
 function formatRange(start?: string, end?: string): string | null {
   const fmt = (value: string) => {
@@ -23,23 +26,20 @@ function formatRange(start?: string, end?: string): string | null {
 export function TournamentView({ slug }: { slug: string }) {
   const { tournament, events, matches, entryMap, loading } = useTournamentData(slug);
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
+  const [view, setView] = useState<"categories" | "order" | "courts">("categories");
 
   if (loading) {
-    return (
-      <div className="mx-auto max-w-6xl px-4 py-10">
-        <Spinner label="Loading tournament" />
-      </div>
-    );
+    return <Spinner label="Loading tournament" />;
   }
 
   if (!tournament) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold">Tournament not found</h1>
-        <p className="mt-2 text-slate-600">
+      <div className="mx-auto max-w-3xl px-4 py-16">
+        <h3>Tournament not found</h3>
+        <p className="text-[13px] opacity-75">
           The link may be wrong, or the organiser may have deleted it.
         </p>
-        <Link href="/" className="mt-4 inline-block text-emerald-700 hover:underline">
+        <Link href="/" className="text-[13px]">
           Back to all tournaments
         </Link>
       </div>
@@ -49,74 +49,117 @@ export function TournamentView({ slug }: { slug: string }) {
   const activeEvent = events.find((e) => e._id === activeEventId) ?? events[0];
   const eventMatches = activeEvent ? matches.filter((m) => m.eventId === activeEvent._id) : [];
   const liveMatches = matches.filter((m) => m.status === "live");
+  const timetabled = matches.some((m) => m.scheduledAt !== undefined);
+  const showOrder = timetabled && view === "order";
+  const showCourts = timetabled && view === "courts";
   const dates = formatRange(tournament.startDate, tournament.endDate);
+  const where = [tournament.venue, dates].filter(Boolean).join(" · ");
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">{tournament.name}</h1>
-          <p className="mt-1 text-slate-600">
-            {[tournament.venue, dates].filter(Boolean).join(" · ")}
-          </p>
-          {tournament.organiserName ? (
-            <p className="mt-1 text-sm text-slate-500">
-              Organised by {tournament.organiserName}
-              {tournament.organiserPhone ? ` · ${tournament.organiserPhone}` : ""}
-            </p>
-          ) : null}
-        </div>
-        <div className="flex flex-col items-start gap-2 sm:items-end">
-          <ShareBar name={tournament.name} path={`/t/${tournament.slug}`} />
+    <div className="mx-auto w-full max-w-3xl">
+      <header className="rule-b2 flex flex-col gap-3 px-4 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="m-0 text-[26px]">{tournament.name}</h2>
           <Link
             href={`/t/${tournament.slug}/manage`}
-            className="text-sm font-medium text-slate-500 hover:text-emerald-700"
+            className="shrink-0 whitespace-nowrap text-[12px]"
           >
             Organiser sign-in
           </Link>
         </div>
+        {where ? <p className="m-0 text-[13px] opacity-75">{where}</p> : null}
+        {tournament.organiserName ? (
+          <p className="m-0 text-[13px] opacity-75">
+            Organised by {tournament.organiserName}
+            {tournament.organiserPhone ? ` · ${tournament.organiserPhone}` : ""}
+          </p>
+        ) : null}
+        <ShareBar name={tournament.name} path={`/t/${tournament.slug}`} />
       </header>
 
       {tournament.notes ? (
-        <p className="mt-4 whitespace-pre-line rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+        <p className="rule-b2 m-0 whitespace-pre-line border-l-2 border-l-[var(--color-accent)] bg-[var(--color-surface)] px-4 py-3 text-[13px] leading-relaxed">
           {tournament.notes}
         </p>
       ) : null}
 
       {liveMatches.length > 0 ? (
-        <section className="mt-8">
-          <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight">
-            On court now <Badge tone="green">{liveMatches.length}</Badge>
-          </h2>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {liveMatches.map((match) => (
-              <MatchRow
-                key={match._id}
-                match={match}
-                entries={entryMap}
-                title={events.find((e) => e._id === match.eventId)?.name}
-              />
-            ))}
-          </div>
+        <section className="rule-b2">
+          <header className="flex items-center gap-2 px-4 py-2.5">
+            <LiveDot />
+            <h6 className="m-0">On court now</h6>
+            <Badge tone="accent">{liveMatches.length}</Badge>
+          </header>
+          {liveMatches.map((match) => (
+            <MatchRow
+              key={match._id}
+              match={match}
+              entries={entryMap}
+              title={events.find((e) => e._id === match.eventId)?.name}
+            />
+          ))}
         </section>
       ) : null}
 
       {events.length === 0 ? (
-        <p className="mt-8 rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600">
+        <p className="note m-4">
           No categories have been added yet. Check back once the organiser sets up the draw.
         </p>
       ) : (
-        <section className="mt-8">
-          <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+        <section>
+          {timetabled ? (
+            <nav className="rule-b2 flex">
+              {(["categories", "order", "courts"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setView(option)}
+                  aria-pressed={view === option}
+                  className={cx(
+                    "btn min-h-12 flex-1 justify-center border-0 border-b-2 text-[12px]",
+                    view === option
+                      ? "border-b-[var(--color-accent)] font-extrabold"
+                      : "border-b-transparent opacity-55",
+                  )}
+                >
+                  {option === "categories"
+                    ? "By category"
+                    : option === "order"
+                      ? "Order of play"
+                      : "By court"}
+                </button>
+              ))}
+            </nav>
+          ) : null}
+
+          {showCourts ? (
+            <CourtGrid
+              matches={matches}
+              events={events}
+              entries={entryMap}
+              matchMinutes={tournament.schedule?.matchMinutes ?? DEFAULT_SCHEDULE.matchMinutes}
+            />
+          ) : showOrder ? (
+            <OrderOfPlay
+              matches={matches}
+              events={events}
+              entries={entryMap}
+              matchMinutes={tournament.schedule?.matchMinutes ?? DEFAULT_SCHEDULE.matchMinutes}
+            />
+          ) : (
+            <>
+          <div className="rule-b2 flex overflow-x-auto">
             {events.map((event) => (
               <button
                 key={event._id}
+                type="button"
                 onClick={() => setActiveEventId(event._id)}
+                aria-pressed={event._id === activeEvent?._id}
                 className={cx(
-                  "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                  "min-h-12 shrink-0 whitespace-nowrap border-0 border-b-2 px-3.5 text-[13px]",
                   event._id === activeEvent?._id
-                    ? "bg-emerald-600 text-white"
-                    : "bg-white text-slate-700 hover:bg-slate-100",
+                    ? "border-b-[var(--color-accent)] font-extrabold"
+                    : "border-b-transparent opacity-55",
                 )}
               >
                 {event.name}
@@ -124,13 +167,18 @@ export function TournamentView({ slug }: { slug: string }) {
             ))}
           </div>
 
-          <div className="mt-6">
-            {activeEvent ? (
-              <EventPanel event={activeEvent} matches={eventMatches} entries={entryMap} />
-            ) : null}
-          </div>
+          {activeEvent ? (
+            <EventPanel event={activeEvent} matches={eventMatches} entries={entryMap} />
+          ) : null}
+            </>
+          )}
         </section>
       )}
+
+      <p className="rule-t2 m-0 flex items-center gap-2 px-4 py-3.5 text-[12px] opacity-60">
+        <LiveDot size={6} />
+        Updating live · no need to refresh
+      </p>
     </div>
   );
 }

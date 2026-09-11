@@ -1,19 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Archivo } from "next/font/google";
 import "./globals.css";
 import { ConvexClientProvider } from "./ConvexClientProvider";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
-import { SITE } from "@/lib/site";
+import { SITE, whatsappLink } from "@/lib/site";
+import { THEME_INIT_SCRIPT, ThemeToggle } from "@/components/ThemeToggle";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+/** Regular for body copy, 800 for every heading and button — the design uses no other weights. */
+const archivo = Archivo({
+  variable: "--font-archivo",
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: ["400", "800"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -85,50 +84,41 @@ const faqJsonLd = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col bg-slate-50 text-slate-900">
+    <html lang="en" className={`${archivo.variable} h-full antialiased`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
+      <body className="flex min-h-full flex-col">
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ // A literal `</script>` inside a JSON string would close the tag early.
             __html: JSON.stringify(faqJsonLd).replace(/</g, "\\u003c") }}
         />
         <ConvexClientProvider>
-          <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/85 backdrop-blur">
-            <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
-              <Link href="/" className="flex min-w-0 items-center gap-2 font-semibold tracking-tight">
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-emerald-600 text-white">
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
-                    <path d="M14.7 2.4a3 3 0 0 1 4.2 4.2l-6.1 6.1-4.2-4.2 6.1-6.1Zm-7.5 7.5 4.2 4.2-1.4 1.4a3 3 0 0 1-4.2-4.2l1.4-1.4Zm-2.6 8.4 2.6 2.6-1.9 1.9a1.8 1.8 0 0 1-2.6-2.6l1.9-1.9Z" />
-                  </svg>
-                </span>
-                <span className="truncate">{SITE.name}</span>
-              </Link>
-              <nav className="flex shrink-0 items-center gap-3 text-sm font-medium text-slate-600 sm:gap-4">
-                <Link href="/" className="hidden hover:text-emerald-700 sm:inline">
-                  Tournaments
-                </Link>
-                <Link
-                  href="/#create"
-                  className="whitespace-nowrap rounded-lg bg-emerald-600 px-3 py-1.5 text-white hover:bg-emerald-700"
-                >
-                  New tournament
-                </Link>
-              </nav>
-            </div>
+          <header className="nav sticky top-0 z-40">
+            <Link href="/" className="nav-brand truncate uppercase">
+              {SITE.name}
+            </Link>
+            <ThemeToggle />
+            <Link href="/#create" className="whitespace-nowrap">
+              New tournament
+            </Link>
           </header>
 
           <main className="flex-1">{children}</main>
 
-          <footer className="border-t border-slate-200 bg-white">
-            <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-6 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-              <p>
-                {SITE.name} — {SITE.tagline}.
-              </p>
-              <p>Built in Ahmedabad, India.</p>
-            </div>
+          <footer className="rule-t2 flex items-center justify-between gap-3 px-4 py-3.5">
+            <span className="text-[11px] opacity-60">
+              {SITE.name} · {SITE.locale.replace("_", "-")}
+            </span>
+            <a
+              href={whatsappLink(`Hi, I need help running a tournament on ${SITE.name}.`)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[12px]"
+            >
+              Questions? WhatsApp us
+            </a>
           </footer>
 
           <WhatsAppButton message={`Hi, I need help running a tournament on ${SITE.name}.`} />

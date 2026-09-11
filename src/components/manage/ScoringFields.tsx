@@ -24,7 +24,7 @@ export function ScoringFields({
   );
 
   return (
-    <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+    <div className="flex flex-col gap-3.5 border border-[var(--color-divider)] bg-[var(--color-surface)] p-3.5">
       <Field label="Scoring preset">
         <Select
           value={matchingPreset?.id ?? "custom"}
@@ -42,7 +42,7 @@ export function ScoringFields({
         </Select>
       </Field>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-3.5 sm:grid-cols-2">
         <Field label="Points per set">
           <Input
             type="number"

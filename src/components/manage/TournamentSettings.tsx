@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { Alert, Button, Card, Field, Input, Textarea } from "@/components/ui";
+import { Alert, Button, Checkbox, Field, Input, Section, Textarea } from "@/components/ui";
+import { ShareBar } from "@/components/tournament/ShareBar";
 import { errorMessage } from "@/lib/usePin";
 
-interface TournamentDetails {
+export interface TournamentDetails {
   _id: Id<"tournaments">;
+  slug: string;
   name: string;
   venue?: string;
   startDate?: string;
@@ -18,6 +20,7 @@ interface TournamentDetails {
   organiserName?: string;
   organiserPhone?: string;
   isPublic: boolean;
+  hasRefereePin: boolean;
 }
 
 function DetailsForm({ tournament, pin }: { tournament: TournamentDetails; pin: string }) {
@@ -52,10 +55,10 @@ function DetailsForm({ tournament, pin }: { tournament: TournamentDetails; pin: 
   }
 
   return (
-    <Card>
-      <h3 className="text-lg font-semibold tracking-tight">Tournament details</h3>
-      <form onSubmit={submit} className="mt-4 space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+    <Section>
+      <h6 className="m-0">Tournament details</h6>
+      <form onSubmit={submit} className="flex flex-col gap-3.5">
+        <div className="grid gap-3.5 sm:grid-cols-2">
           <Field label="Name">
             <Input
               required
@@ -71,7 +74,7 @@ function DetailsForm({ tournament, pin }: { tournament: TournamentDetails; pin: 
               onChange={(e) => setDraft({ ...draft, venue: e.target.value })}
             />
           </Field>
-          <Field label="Start date">
+          <Field label="Start date" hint="Needed before the order of play can be planned.">
             <Input
               type="date"
               value={draft.startDate}
@@ -110,34 +113,34 @@ function DetailsForm({ tournament, pin }: { tournament: TournamentDetails; pin: 
           />
         </Field>
 
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={draft.isPublic}
-            onChange={(e) => setDraft({ ...draft, isPublic: e.target.checked })}
-            className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-400"
-          />
-          List this tournament publicly (unlisted tournaments still work by link)
-        </label>
+        <Checkbox
+          checked={draft.isPublic}
+          onChange={(e) => setDraft({ ...draft, isPublic: e.target.checked })}
+          label="List this tournament publicly (unlisted tournaments still work by link)"
+        />
 
         {error ? <Alert kind="error">{error}</Alert> : null}
         {saved ? <Alert kind="success">Saved.</Alert> : null}
 
-        <Button type="submit" disabled={busy}>
-          {busy ? "Saving…" : "Save details"}
-        </Button>
+        <div>
+          <Button type="submit" className="min-h-12" disabled={busy}>
+            {busy ? "Saving…" : "Save details"}
+          </Button>
+        </div>
       </form>
-    </Card>
+    </Section>
   );
 }
 
 function PinForm({
   tournamentId,
   pin,
+  hasRefereePin,
   onPinChanged,
 }: {
   tournamentId: Id<"tournaments">;
   pin: string;
+  hasRefereePin: boolean;
   onPinChanged: (next: string) => void;
 }) {
   const changePin = useMutation(api.tournaments.changePin);
@@ -170,48 +173,171 @@ function PinForm({
   }
 
   return (
-    <Card>
-      <h3 className="text-lg font-semibold tracking-tight">Organiser PIN</h3>
-      <p className="mt-1 text-sm text-slate-600">
+    <Section>
+      <h6 className="m-0">Organiser PIN</h6>
+      <p className="m-0 text-[13px] opacity-70">
         Anyone with this PIN can change the draw and the scores. Share it only with the people
         running the desk.
       </p>
-      <form onSubmit={submit} className="mt-4 grid gap-4 sm:grid-cols-2">
-        <Field label="New PIN">
-          <Input
-            type="password"
-            required
-            minLength={4}
-            maxLength={32}
-            value={newPin}
-            onChange={(e) => setNewPin(e.target.value)}
-            autoComplete="new-password"
-          />
-        </Field>
-        <Field label="Repeat the new PIN">
-          <Input
-            type="password"
-            required
-            minLength={4}
-            maxLength={32}
-            value={confirmPin}
-            onChange={(e) => setConfirmPin(e.target.value)}
-            autoComplete="new-password"
-          />
-        </Field>
-        <div className="sm:col-span-2 space-y-3">
-          {error ? <Alert kind="error">{error}</Alert> : null}
-          {saved ? <Alert kind="success">PIN changed.</Alert> : null}
-          <Button type="submit" disabled={busy}>
+      {hasRefereePin ? (
+        <Alert kind="info">
+          Changing this PIN also clears the referee PIN. You will need to set a new one for your
+          umpires afterwards.
+        </Alert>
+      ) : null}
+      <form onSubmit={submit} className="flex flex-col gap-3.5">
+        <div className="grid gap-3.5 sm:grid-cols-2">
+          <Field label="New PIN">
+            <Input
+              type="password"
+              required
+              minLength={4}
+              maxLength={32}
+              value={newPin}
+              onChange={(e) => setNewPin(e.target.value)}
+              autoComplete="new-password"
+            />
+          </Field>
+          <Field label="Repeat the new PIN">
+            <Input
+              type="password"
+              required
+              minLength={4}
+              maxLength={32}
+              value={confirmPin}
+              onChange={(e) => setConfirmPin(e.target.value)}
+              autoComplete="new-password"
+            />
+          </Field>
+        </div>
+        {error ? <Alert kind="error">{error}</Alert> : null}
+        {saved ? <Alert kind="success">PIN changed.</Alert> : null}
+        <div>
+          <Button type="submit" variant="secondary" className="min-h-12" disabled={busy}>
             {busy ? "Changing…" : "Change PIN"}
           </Button>
         </div>
       </form>
-    </Card>
+    </Section>
   );
 }
 
-function DangerZone({ tournamentId, name, pin }: { tournamentId: Id<"tournaments">; name: string; pin: string }) {
+/**
+ * The referee PIN.
+ *
+ * A second PIN that opens the scoring console and nothing else, so umpires can
+ * enter their own results without being handed the keys to the draw.
+ */
+function RefereePinForm({
+  tournament,
+  pin,
+}: {
+  tournament: TournamentDetails;
+  pin: string;
+}) {
+  const setRefereePin = useMutation(api.tournaments.setRefereePin);
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      await setRefereePin({ tournamentId: tournament._id, pin, refereePin: value });
+      setValue("");
+      setNotice("Referee PIN saved. Share it with your umpires along with the scoring link.");
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clear() {
+    if (!window.confirm("Remove the referee PIN? Umpires will lose access to the scoring page.")) {
+      return;
+    }
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      await setRefereePin({ tournamentId: tournament._id, pin, refereePin: null });
+      setNotice("Referee PIN removed.");
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Section>
+      <h6 className="m-0">Referee PIN</h6>
+      <p className="m-0 text-[13px] opacity-70">
+        Umpires with this PIN can enter scores and nothing else — they cannot touch the draw, the
+        entrants or the settings. It must be different from your organiser PIN.
+      </p>
+
+      {tournament.hasRefereePin ? (
+        <>
+          <Alert kind="success">A referee PIN is set. Give your umpires this link:</Alert>
+          <ShareBar
+            name={`${tournament.name} — referee scoring`}
+            path={`/t/${tournament.slug}/score`}
+            compact
+          />
+        </>
+      ) : (
+        <Alert kind="info">No referee PIN yet. Only you can enter scores.</Alert>
+      )}
+
+      <form onSubmit={save} className="flex flex-col gap-3.5">
+        <Field
+          label={tournament.hasRefereePin ? "Replace the referee PIN" : "Referee PIN"}
+          hint="4 to 32 characters."
+        >
+          <Input
+            type="password"
+            required
+            minLength={4}
+            maxLength={32}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            autoComplete="new-password"
+          />
+        </Field>
+
+        {error ? <Alert kind="error">{error}</Alert> : null}
+        {notice ? <Alert kind="success">{notice}</Alert> : null}
+
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" variant="secondary" className="min-h-12" disabled={busy}>
+            {busy ? "Saving…" : tournament.hasRefereePin ? "Replace PIN" : "Set referee PIN"}
+          </Button>
+          {tournament.hasRefereePin ? (
+            <Button type="button" variant="ghost" className="min-h-12" disabled={busy} onClick={clear}>
+              Remove
+            </Button>
+          ) : null}
+        </div>
+      </form>
+    </Section>
+  );
+}
+
+function DangerZone({
+  tournamentId,
+  name,
+  pin,
+}: {
+  tournamentId: Id<"tournaments">;
+  name: string;
+  pin: string;
+}) {
   const remove = useMutation(api.tournaments.remove);
   const router = useRouter();
   const [confirmName, setConfirmName] = useState("");
@@ -231,26 +357,29 @@ function DangerZone({ tournamentId, name, pin }: { tournamentId: Id<"tournaments
   }
 
   return (
-    <Card className="border-rose-200">
-      <h3 className="text-lg font-semibold tracking-tight text-rose-700">Delete this tournament</h3>
-      <p className="mt-1 text-sm text-slate-600">
-        This removes every category, entrant, match and score. It cannot be undone. Type the
+    <Section className="border-b-0">
+      <h6 className="m-0 text-[var(--color-accent-ink)]">Danger</h6>
+      <p className="m-0 text-[13px] opacity-70">
+        Deleting removes every category, entrant, match and score. It cannot be undone. Type the
         tournament name to confirm.
       </p>
-      <div className="mt-4 flex flex-wrap items-end gap-3">
-        <Field label="Tournament name">
-          <Input value={confirmName} onChange={(e) => setConfirmName(e.target.value)} placeholder={name} />
-        </Field>
-        <Button variant="danger" disabled={busy || confirmName.trim() !== name} onClick={destroy}>
-          {busy ? "Deleting…" : "Delete permanently"}
-        </Button>
-      </div>
-      {error ? (
-        <div className="mt-3">
-          <Alert kind="error">{error}</Alert>
-        </div>
-      ) : null}
-    </Card>
+      <Field label="Tournament name">
+        <Input
+          value={confirmName}
+          onChange={(e) => setConfirmName(e.target.value)}
+          placeholder={name}
+        />
+      </Field>
+      {error ? <Alert kind="error">{error}</Alert> : null}
+      <Button
+        block
+        className="min-h-12"
+        disabled={busy || confirmName.trim() !== name}
+        onClick={destroy}
+      >
+        {busy ? "Deleting…" : "Delete this tournament"}
+      </Button>
+    </Section>
   );
 }
 
@@ -264,9 +393,15 @@ export function TournamentSettings({
   onPinChanged: (next: string) => void;
 }) {
   return (
-    <div className="space-y-6">
+    <div>
       <DetailsForm tournament={tournament} pin={pin} />
-      <PinForm tournamentId={tournament._id} pin={pin} onPinChanged={onPinChanged} />
+      <PinForm
+        tournamentId={tournament._id}
+        pin={pin}
+        hasRefereePin={tournament.hasRefereePin}
+        onPinChanged={onPinChanged}
+      />
+      <RefereePinForm tournament={tournament} pin={pin} />
       <DangerZone tournamentId={tournament._id} name={tournament.name} pin={pin} />
     </div>
   );

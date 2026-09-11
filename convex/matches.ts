@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { requireOrganiser } from "./lib/auth";
+import { requireOrganiser, requireScorer } from "./lib/auth";
 import { matchStatusValidator } from "./schema";
 import {
   advanceKnockout,
@@ -71,7 +71,29 @@ function sortMatches(rows: Doc<"matches">[]): Doc<"matches">[] {
   );
 }
 
-async function loadMatchForOrganiser(ctx: Parameters<typeof requireOrganiser>[0], matchId: Id<"matches">, pin: string) {
+/**
+ * Load a match for someone entering a result. Either PIN opens this door: an
+ * umpire with the referee PIN can score, and only score.
+ */
+async function loadMatchForScorer(
+  ctx: Parameters<typeof requireScorer>[0],
+  matchId: Id<"matches">,
+  pin: string,
+) {
+  const match = await ctx.db.get(matchId);
+  if (!match) throw new ConvexError("That match no longer exists.");
+  await requireScorer(ctx, match.tournamentId, pin);
+  const event = await ctx.db.get(match.eventId);
+  if (!event) throw new ConvexError("That category no longer exists.");
+  return { match, event };
+}
+
+/** Load a match for an action only the organiser may take. */
+async function loadMatchForOrganiser(
+  ctx: Parameters<typeof requireOrganiser>[0],
+  matchId: Id<"matches">,
+  pin: string,
+) {
   const match = await ctx.db.get(matchId);
   if (!match) throw new ConvexError("That match no longer exists.");
   await requireOrganiser(ctx, match.tournamentId, pin);
@@ -97,7 +119,7 @@ export const setScore = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { match, event } = await loadMatchForOrganiser(ctx, args.matchId, args.pin);
+    const { match, event } = await loadMatchForScorer(ctx, args.matchId, args.pin);
     if (!match.aId || !match.bId) {
       throw new ConvexError("Both sides must be decided before a score can be entered.");
     }
@@ -137,7 +159,7 @@ export const setWalkover = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { match, event } = await loadMatchForOrganiser(ctx, args.matchId, args.pin);
+    const { match, event } = await loadMatchForScorer(ctx, args.matchId, args.pin);
     if (args.winnerId && args.winnerId !== match.aId && args.winnerId !== match.bId) {
       throw new ConvexError("The winner must be one of the two sides in this match.");
     }
@@ -161,7 +183,7 @@ export const reset = mutation({
   args: { matchId: v.id("matches"), pin: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { match, event } = await loadMatchForOrganiser(ctx, args.matchId, args.pin);
+    const { match, event } = await loadMatchForScorer(ctx, args.matchId, args.pin);
     await ctx.db.patch(args.matchId, {
       sets: [],
       status: "scheduled",

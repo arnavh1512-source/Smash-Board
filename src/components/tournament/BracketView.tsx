@@ -4,9 +4,43 @@ import type { Doc } from "../../../convex/_generated/dataModel";
 import { knockoutRoundName } from "@/lib/draw";
 import { MatchRow, type EntryLookup } from "./MatchRow";
 
+/** One round of the draw: a surface-coloured header, then its matches. */
+function Round({
+  title,
+  meta,
+  matches,
+  entries,
+  renderAction,
+}: {
+  title: string;
+  meta: string;
+  matches: Doc<"matches">[];
+  entries: EntryLookup;
+  renderAction?: (match: Doc<"matches">) => React.ReactNode;
+}) {
+  return (
+    <div>
+      <header className="rule-t2 rule-b flex items-baseline justify-between gap-3 bg-[var(--color-surface)] px-4 py-2.5">
+        <h6 className="m-0">{title}</h6>
+        <span className="text-[11px] opacity-55">{meta}</span>
+      </header>
+      {matches.map((match) => (
+        <MatchRow
+          key={match._id}
+          match={match}
+          entries={entries}
+          title={`Match ${match.slot + 1}`}
+          action={renderAction?.(match)}
+        />
+      ))}
+    </div>
+  );
+}
+
 /**
- * The knockout draw, one column per round. It scrolls sideways on a phone
- * rather than squeezing the columns, so names stay readable.
+ * The knockout draw, read top to bottom one round at a time. A phone cannot
+ * show a side-by-side bracket without shrinking the names past readability,
+ * so the design stacks the rounds instead.
  */
 export function BracketView({
   matches,
@@ -27,37 +61,27 @@ export function BracketView({
   );
 
   return (
-    <div className="-mx-4 overflow-x-auto px-4 pb-2">
-      <div className="flex min-w-max gap-4">
-        {rounds.map((roundMatches, round) => (
-          <div key={round} className="w-64 shrink-0 space-y-3">
-            <h4 className="text-sm font-semibold text-slate-700">
-              {knockoutRoundName(round, totalRounds)}
-            </h4>
-            {roundMatches.map((match) => (
-              <MatchRow
-                key={match._id}
-                match={match}
-                entries={entries}
-                title={`Match ${match.slot + 1}`}
-                action={renderAction?.(match)}
-              />
-            ))}
-          </div>
-        ))}
+    <div>
+      {rounds.map((roundMatches, round) => (
+        <Round
+          key={round}
+          title={knockoutRoundName(round, totalRounds)}
+          meta={`${roundMatches.length} ${roundMatches.length === 1 ? "match" : "matches"}`}
+          matches={roundMatches}
+          entries={entries}
+          renderAction={renderAction}
+        />
+      ))}
 
-        {thirdPlace ? (
-          <div className="w-64 shrink-0 space-y-3">
-            <h4 className="text-sm font-semibold text-slate-700">Third place</h4>
-            <MatchRow
-              match={thirdPlace}
-              entries={entries}
-              title="Playoff"
-              action={renderAction?.(thirdPlace)}
-            />
-          </div>
-        ) : null}
-      </div>
+      {thirdPlace ? (
+        <Round
+          title="Third place"
+          meta="Playoff"
+          matches={[thirdPlace]}
+          entries={entries}
+          renderAction={renderAction}
+        />
+      ) : null}
     </div>
   );
 }

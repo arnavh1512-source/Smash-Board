@@ -1,16 +1,6 @@
 @import "tailwindcss";
+@import "./modernist.css";
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-:root {
-  /*
-   * The interface is designed light-only: every surface sets its own
-   * background and text colour. Declaring the scheme stops the browser from
-   * darkening form controls and scrollbars on a device set to dark mode,
-   * which would leave dark text sitting on a dark ground.
-   */
-  color-scheme: light;
+  --font-sans: var(--font-archivo);
 }

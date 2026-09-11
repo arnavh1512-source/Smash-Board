@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { scheduleValidator } from "./schema";
 import type { Id } from "./_generated/dataModel";
 import {
   assertPinShape,
@@ -7,6 +8,7 @@ import {
   newSalt,
   publicTournament,
   requireOrganiser,
+  requireScorer,
 } from "./lib/auth";
 
 const MAX_NAME = 120;
@@ -24,6 +26,9 @@ const publicTournamentValidator = v.object({
   organiserName: v.optional(v.string()),
   organiserPhone: v.optional(v.string()),
   isPublic: v.boolean(),
+  /** Whether a referee PIN exists. The hash itself never leaves the server. */
+  hasRefereePin: v.boolean(),
+  schedule: v.optional(scheduleValidator),
   createdAt: v.number(),
   updatedAt: v.number(),
 });
@@ -184,9 +189,13 @@ export const changePin = mutation({
     await requireOrganiser(ctx, args.tournamentId, args.pin);
     assertPinShape(args.newPin);
     const salt = newSalt();
+    // A new salt invalidates every hash made with the old one, so a referee PIN
+    // that is still in circulation has to be dropped rather than silently
+    // stranded. The console tells the organiser to issue a new one.
     await ctx.db.patch(args.tournamentId, {
       pinSalt: salt,
       pinHash: await hashPin(args.newPin, salt),
+      refereePinHash: undefined,
       failedPinAttempts: 0,
       pinLockedUntil: undefined,
       updatedAt: Date.now(),
@@ -195,12 +204,56 @@ export const changePin = mutation({
   },
 });
 
-/** Used by the organiser sign-in gate. Returns nothing; throws when wrong. */
+/**
+ * Used by the sign-in gates. Returns nothing; throws when the PIN is wrong.
+ *
+ * `role` says which door is being knocked on: the referee console accepts
+ * either PIN, the organiser console accepts only the organiser's.
+ */
 export const verifyPin = mutation({
-  args: { tournamentId: v.id("tournaments"), pin: v.string() },
+  args: {
+    tournamentId: v.id("tournaments"),
+    pin: v.string(),
+    role: v.optional(v.union(v.literal("organiser"), v.literal("referee"))),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireOrganiser(ctx, args.tournamentId, args.pin);
+    if (args.role === "referee") await requireScorer(ctx, args.tournamentId, args.pin);
+    else await requireOrganiser(ctx, args.tournamentId, args.pin);
+    return null;
+  },
+});
+
+/**
+ * Set or clear the referee PIN.
+ *
+ * It is hashed with the tournament's existing salt, and must differ from the
+ * organiser PIN — otherwise handing it out would hand out the whole console.
+ */
+export const setRefereePin = mutation({
+  args: {
+    tournamentId: v.id("tournaments"),
+    pin: v.string(),
+    refereePin: v.union(v.string(), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const tournament = await requireOrganiser(ctx, args.tournamentId, args.pin);
+
+    if (args.refereePin === null) {
+      await ctx.db.patch(args.tournamentId, {
+        refereePinHash: undefined,
+        updatedAt: Date.now(),
+      });
+      return null;
+    }
+
+    assertPinShape(args.refereePin, "Referee PIN");
+    const hash = await hashPin(args.refereePin, tournament.pinSalt);
+    if (hash === tournament.pinHash) {
+      throw new ConvexError("The referee PIN must be different from your organiser PIN.");
+    }
+    await ctx.db.patch(args.tournamentId, { refereePinHash: hash, updatedAt: Date.now() });
     return null;
   },
 });

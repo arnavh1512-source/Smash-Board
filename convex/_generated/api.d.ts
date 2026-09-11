@@ -14,6 +14,7 @@ import type * as events from "../events.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_progression from "../lib/progression.js";
 import type * as matches from "../matches.js";
+import type * as schedule from "../schedule.js";
 import type * as tournaments from "../tournaments.js";
 
 import type {
@@ -29,6 +30,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/progression": typeof lib_progression;
   matches: typeof matches;
+  schedule: typeof schedule;
   tournaments: typeof tournaments;
 }>;
 

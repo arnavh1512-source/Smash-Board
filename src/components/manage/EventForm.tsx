@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
-import { Alert, Button, Card, Field, Input, Select } from "@/components/ui";
+import { Alert, Button, Checkbox, Field, Input, Section, Select } from "@/components/ui";
 import { ScoringFields } from "./ScoringFields";
 import { DEFAULT_SCORING, type ScoringConfig } from "@/lib/scoring";
 import { errorMessage } from "@/lib/usePin";
@@ -84,13 +84,11 @@ export function EventForm({
   const usesKnockout = draft.format !== "round_robin";
 
   return (
-    <Card>
-      <h3 className="text-lg font-semibold tracking-tight">
-        {event ? `Edit ${event.name}` : "Add a category"}
-      </h3>
+    <Section>
+      <h6 className="m-0">{event ? `Edit ${event.name}` : "Add a category"}</h6>
 
-      <form onSubmit={submit} className="mt-4 space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+      <form onSubmit={submit} className="flex flex-col gap-3.5">
+        <div className="grid gap-3.5 sm:grid-cols-2">
           <Field label="Category name">
             <Input
               required
@@ -129,7 +127,7 @@ export function EventForm({
           onChange={(scoring) => setDraft({ ...draft, scoring })}
         />
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-3.5 sm:grid-cols-2">
           {usesGroups ? (
             <>
               <Field label="Number of groups">
@@ -154,29 +152,21 @@ export function EventForm({
           ) : null}
         </div>
 
-        <div className="space-y-2 text-sm text-slate-700">
+        <div className="flex flex-col gap-1">
           {usesRoundRobin ? (
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={draft.doubleRound}
-                onChange={(e) => setDraft({ ...draft, doubleRound: e.target.checked })}
-                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-400"
-              />
-              Play every pairing twice (home and away)
-            </label>
+            <Checkbox
+              checked={draft.doubleRound}
+              onChange={(e) => setDraft({ ...draft, doubleRound: e.target.checked })}
+              label="Play every pairing twice (home and away)"
+            />
           ) : null}
 
           {usesKnockout ? (
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={draft.thirdPlace}
-                onChange={(e) => setDraft({ ...draft, thirdPlace: e.target.checked })}
-                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-400"
-              />
-              Add a third-place playoff
-            </label>
+            <Checkbox
+              checked={draft.thirdPlace}
+              onChange={(e) => setDraft({ ...draft, thirdPlace: e.target.checked })}
+              label="Add a third-place playoff"
+            />
           ) : null}
         </div>
 
@@ -189,15 +179,15 @@ export function EventForm({
 
         {error ? <Alert kind="error">{error}</Alert> : null}
 
-        <div className="flex gap-2">
-          <Button type="submit" disabled={busy}>
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" className="min-h-12" disabled={busy}>
             {busy ? "Saving…" : event ? "Save changes" : "Add category"}
           </Button>
-          <Button type="button" variant="ghost" onClick={onDone}>
+          <Button type="button" variant="ghost" className="min-h-12" onClick={onDone}>
             Cancel
           </Button>
         </div>
       </form>
-    </Card>
+    </Section>
   );
 }

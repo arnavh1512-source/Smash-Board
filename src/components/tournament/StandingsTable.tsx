@@ -6,8 +6,6 @@ import type { ScoringConfig } from "@/lib/scoring";
 import { entryName } from "@/lib/display";
 import type { EntryLookup } from "./MatchRow";
 
-const HEADINGS = ["#", "Player", "P", "W", "L", "Sets", "Points"];
-
 /** A group or round-robin table, in the BWF tiebreak order. */
 export function StandingsTable({
   matches,
@@ -41,37 +39,42 @@ export function StandingsTable({
   );
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-      <table className="w-full min-w-[28rem] text-sm">
-        <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+    <div className="overflow-x-auto px-4">
+      <table className="table">
+        <thead>
           <tr>
-            {HEADINGS.map((heading) => (
-              <th key={heading} className="px-3 py-2 font-semibold">
-                {heading}
-              </th>
-            ))}
+            <th className="pl-0">Pair</th>
+            <th className="text-right">P</th>
+            <th className="text-right">W</th>
+            <th className="text-right">L</th>
+            <th className="text-right">Sets</th>
+            <th className="pr-0 text-right">Points</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody>
           {rows.map((row) => (
             <tr key={row.entryId}>
-              <td className="px-3 py-2 tabular-nums text-slate-500">{row.rank}</td>
-              <td className="px-3 py-2 font-medium text-slate-900">
+              <td className="pl-0">
+                <span className="num mr-2 opacity-50">{row.rank}</span>
                 {entryName(entries.get(row.entryId as Id<"entries">))}
               </td>
-              <td className="px-3 py-2 tabular-nums">{row.played}</td>
-              <td className="px-3 py-2 tabular-nums font-semibold text-emerald-700">{row.won}</td>
-              <td className="px-3 py-2 tabular-nums">{row.lost}</td>
-              <td className="px-3 py-2 tabular-nums text-slate-600">
+              <td className="num text-right">{row.played}</td>
+              <td className="num text-right font-extrabold">{row.won}</td>
+              <td className="num text-right">{row.lost}</td>
+              <td className="num text-right opacity-75">
                 {row.setsWon}–{row.setsLost}
               </td>
-              <td className="px-3 py-2 tabular-nums text-slate-600">
+              <td className="num pr-0 text-right opacity-75">
                 {row.pointsFor}–{row.pointsAgainst}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      <p className="mt-2 mb-0 text-[11px] opacity-55">
+        Ranked by matches won, then wins minus losses, set difference, point difference and finally
+        the head-to-head result.
+      </p>
     </div>
   );
 }

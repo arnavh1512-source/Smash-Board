@@ -4,8 +4,17 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { Alert, Button, Card, Field, Input, Textarea } from "@/components/ui";
+import { Alert, Button, Checkbox, Field, Input, Textarea } from "@/components/ui";
 import { errorMessage } from "@/lib/usePin";
+
+/** A section heading in the form: an accent numeral and a title, as the design sets them. */
+function Step({ number, title }: { number: string; title: string }) {
+  return (
+    <h6 className="m-0 text-[var(--color-accent-ink)]">
+      {number} — {title}
+    </h6>
+  );
+}
 
 /** Everything the organiser needs to start, on one short form. */
 export function CreateTournamentForm() {
@@ -60,13 +69,15 @@ export function CreateTournamentForm() {
   }
 
   return (
-    <Card>
-      <h2 className="text-xl font-bold tracking-tight">Create a tournament</h2>
-      <p className="mt-1 text-sm text-slate-600">
+    <section className="rule-b2 bg-[var(--color-surface)] px-4 py-5">
+      <h4 className="m-0">Create a tournament</h4>
+      <p className="mb-4 mt-1.5 text-[13px] opacity-75">
         Takes under a minute. The PIN is the only thing that lets you edit it later, so keep it safe.
       </p>
 
-      <form onSubmit={submit} className="mt-5 space-y-4">
+      <form onSubmit={submit} className="flex flex-col gap-3.5">
+        <Step number="01" title="The tournament" />
+
         <Field label="Tournament name">
           <Input
             required
@@ -86,7 +97,7 @@ export function CreateTournamentForm() {
           />
         </Field>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-3">
           <Field label="Starts">
             <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </Field>
@@ -95,68 +106,72 @@ export function CreateTournamentForm() {
           </Field>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Organiser name">
-            <Input value={organiserName} onChange={(e) => setOrganiserName(e.target.value)} />
-          </Field>
-          <Field label="Organiser phone" hint="Shown to players so they can reach you.">
-            <Input
-              type="tel"
-              value={organiserPhone}
-              onChange={(e) => setOrganiserPhone(e.target.value)}
-              placeholder="+91 98765 43210"
-            />
-          </Field>
-        </div>
-
         <Field label="Notes for players" hint="Entry fee, reporting time, rules — anything worth saying.">
           <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} />
         </Field>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Organiser PIN" hint="At least 4 characters.">
-            <Input
-              type="password"
-              required
-              minLength={4}
-              maxLength={64}
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              autoComplete="new-password"
-            />
-          </Field>
-          <Field label="Confirm PIN">
-            <Input
-              type="password"
-              required
-              minLength={4}
-              maxLength={64}
-              value={confirmPin}
-              onChange={(e) => setConfirmPin(e.target.value)}
-              autoComplete="new-password"
-            />
-          </Field>
-        </div>
+        <hr className="hr" style={{ margin: 0 }} />
+        <Step number="02" title="You" />
 
-        <label className="flex items-start gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={isPublic}
-            onChange={(e) => setIsPublic(e.target.checked)}
-            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-400"
+        <Field label="Organiser name">
+          <Input value={organiserName} onChange={(e) => setOrganiserName(e.target.value)} />
+        </Field>
+
+        <Field label="Organiser phone" hint="Shown to players so they can reach you.">
+          <Input
+            type="tel"
+            value={organiserPhone}
+            onChange={(e) => setOrganiserPhone(e.target.value)}
+            placeholder="+91 98765 43210"
           />
-          <span>
-            List this tournament publicly. Turn it off and only people with the link can find it — the
-            link still works either way.
-          </span>
-        </label>
+        </Field>
+
+        <hr className="hr" style={{ margin: 0 }} />
+        <Step number="03" title="Your key" />
+
+        <p className="note note-accent m-0">
+          The PIN is the only way back into the console. There is no email reset — write it down before
+          you carry on.
+        </p>
+
+        <Field label="Organiser PIN" hint="At least 4 characters.">
+          <Input
+            type="password"
+            required
+            minLength={4}
+            maxLength={64}
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            autoComplete="new-password"
+            className="tracking-[0.3em]"
+          />
+        </Field>
+
+        <Field label="Confirm PIN">
+          <Input
+            type="password"
+            required
+            minLength={4}
+            maxLength={64}
+            value={confirmPin}
+            onChange={(e) => setConfirmPin(e.target.value)}
+            autoComplete="new-password"
+            className="tracking-[0.3em]"
+          />
+        </Field>
+
+        <Checkbox
+          checked={isPublic}
+          onChange={(e) => setIsPublic(e.target.checked)}
+          label="Listed publicly on the home page"
+        />
 
         {error ? <Alert kind="error">{error}</Alert> : null}
 
-        <Button type="submit" disabled={busy} className="w-full py-2.5">
-          {busy ? "Creating…" : "Create tournament"}
+        <Button type="submit" block disabled={busy} className="min-h-[50px] text-[15px]">
+          {busy ? "Creating…" : "Create and get my link"}
         </Button>
       </form>
-    </Card>
+    </section>
   );
 }

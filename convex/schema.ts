@@ -9,6 +9,23 @@ export const scoringValidator = v.object({
   cap: v.union(v.number(), v.null()),
 });
 
+/**
+ * How the order of play is built. Times are held as minutes so the planner can
+ * do arithmetic on them; the start day comes from the tournament's startDate.
+ */
+export const scheduleValidator = v.object({
+  /** Local wall-clock start of play, "HH:MM" on a 24-hour clock. */
+  dayStart: v.string(),
+  /** How long one match is allowed on court, including the knock-up. */
+  matchMinutes: v.number(),
+  /** Minimum rest a player is guaranteed between two of their matches. */
+  restMinutes: v.number(),
+  /** How many courts run in parallel. */
+  courts: v.number(),
+  /** When the planner last ran, so the console can say the plan is stale. */
+  generatedAt: v.union(v.number(), v.null()),
+});
+
 export const matchStatusValidator = v.union(
   v.literal("scheduled"),
   v.literal("live"),
@@ -30,6 +47,14 @@ export default defineSchema({
     /** SHA-256 of salt + PIN. The PIN itself is never stored. */
     pinHash: v.string(),
     pinSalt: v.string(),
+    /**
+     * Optional second PIN that unlocks score entry and nothing else, so an
+     * umpire can be handed a phone without being handed the whole console.
+     * Hashed with the same salt as the organiser PIN.
+     */
+    refereePinHash: v.optional(v.string()),
+    /** Order-of-play settings. Absent until the organiser plans the day. */
+    schedule: v.optional(scheduleValidator),
     /** Hidden tournaments stay reachable by link but are not listed. */
     isPublic: v.boolean(),
     /** Consecutive wrong PINs, reset on success. Drives the lockout below. */
@@ -102,7 +127,10 @@ export default defineSchema({
     winnerId: v.union(v.id("entries"), v.null()),
     isThirdPlace: v.boolean(),
     court: v.optional(v.string()),
+    /** Local start time as "YYYY-MM-DDTHH:MM", written by the planner. */
     scheduledAt: v.optional(v.string()),
+    /** Minutes from the first match of the tournament. Kept for ordering. */
+    scheduleOffset: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_event", ["eventId"])

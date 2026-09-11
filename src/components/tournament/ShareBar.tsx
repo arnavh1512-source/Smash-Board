@@ -1,13 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui";
 import { whatsappLink } from "@/lib/site";
 
 /** Copy the public link, or send it straight to a WhatsApp group. */
-export function ShareBar({ name, path }: { name: string; path: string }) {
+export function ShareBar({
+  name,
+  path,
+  compact,
+}: {
+  name: string;
+  path: string;
+  /** The organiser console packs these into a tighter header. */
+  compact?: boolean;
+}) {
   const [copied, setCopied] = useState(false);
   const url = typeof window === "undefined" ? path : `${window.location.origin}${path}`;
+  const size = compact ? "min-h-10 text-[12px]" : "min-h-11 text-[13px]";
 
   async function copy() {
     try {
@@ -20,15 +29,15 @@ export function ShareBar({ name, path }: { name: string; path: string }) {
   }
 
   return (
-    <div className="flex flex-wrap gap-2">
-      <Button variant="secondary" onClick={copy}>
+    <div className="flex gap-2">
+      <button type="button" onClick={copy} className={`btn btn-secondary flex-1 justify-start ${size}`}>
         {copied ? "Link copied" : "Copy link"}
-      </Button>
+      </button>
       <a
         href={whatsappLink(`Live scores for ${name}: ${url}`)}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center rounded-lg bg-[#25D366] px-3.5 py-2 text-sm font-medium text-white transition hover:bg-[#1ebe5b]"
+        className={`btn ${compact ? "btn-secondary" : "btn-primary"} flex-1 justify-start ${size}`}
       >
         Share on WhatsApp
       </a>
