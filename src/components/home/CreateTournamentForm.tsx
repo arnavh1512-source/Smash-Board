@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Alert, Button, Checkbox, Field, Input, Textarea } from "@/components/ui";
-import { errorMessage } from "@/lib/usePin";
+import { errorMessage, sessionKey } from "@/lib/useSession";
 
 /** A section heading in the form: an accent numeral and a title, as the design sets them. */
 function Step({ number, title }: { number: string; title: string }) {
@@ -57,7 +57,8 @@ export function CreateTournamentForm() {
         isPublic,
       });
       try {
-        window.sessionStorage.setItem(`smashboard:pin:${result.slug}`, pin);
+        // `create` signs the organiser in, so the console opens straight away.
+        window.sessionStorage.setItem(sessionKey(result.slug), result.token);
       } catch {
         // The organiser will simply be asked for the PIN on the next screen.
       }

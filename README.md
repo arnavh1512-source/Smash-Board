@@ -23,11 +23,30 @@ a score entered by the organiser appears on every open scoreboard without a refr
   with a guaranteed rest between a player's matches and another category filling the court while
   they take it. Readable in time order or court by court, by organiser and public alike.
 
+## How access works
+
+A tournament is guarded by a PIN chosen when it is created, and optionally by a second,
+scoring-only referee PIN. Neither is stored: only a SHA-256 hash of `salt + pin` is kept, and the
+salt is generated per tournament.
+
+The PIN is accepted at exactly one endpoint, `tournaments.signIn`, which trades it for a
+short-lived signed session token. Every other mutation takes the token and never sees the PIN.
+That is not tidiness, it is correctness: a Convex mutation is a transaction, so a guard that
+recorded a wrong guess and then threw would have that write rolled back by its own throw and the
+failure counter could never climb. `signIn` returns `{ ok: false, error }` for a wrong PIN instead
+of throwing, so eight wrong guesses — across both doors, sharing one counter — really do lock the
+tournament for ten minutes.
+
+The token is stateless: an HMAC over the tournament, the role, the expiry and that role's PIN hash,
+keyed by the tournament's own salt. Nothing is stored server-side, tokens last twelve hours, and
+changing a PIN silently invalidates every token issued for it while leaving the other role's alone.
+On the client the token lives in `sessionStorage` and dies with the tab.
+
 ## Layout
 
 ```
 convex/            backend: schema, auth, tournaments, events, entries, draws, matches
-convex/lib/        organiser PIN checks and draw progression
+convex/lib/        sign-in, session tokens and draw progression
 src/lib/           pure logic shared by backend and UI: scoring, draw generation, standings,
                    order-of-play planning
 src/app/           routes: landing, /t/[slug] public view, /t/[slug]/manage organiser console,
@@ -78,7 +97,7 @@ tournaments, so run them against a development deployment, never production.
 | `tests/display.test.ts` | entrant names, scoring summaries, match ordering |
 | `tests/schedule.test.ts` | court packing, rest between matches, the court-count cap, clock maths |
 | `tests/integration/backend.test.ts` | the tournament lifecycle against a real deployment |
-| `tests/integration/referee.test.ts` | what the referee PIN opens, what it refuses, the lockout |
+| `tests/integration/referee.test.ts` | the sign-in door, token forgery, what a referee may and may not do, the lockout |
 
 ## Deploying
 

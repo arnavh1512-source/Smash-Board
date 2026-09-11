@@ -6,9 +6,14 @@ import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Button, Field, Input } from "@/components/ui";
-import { errorMessage, type PinRole } from "@/lib/usePin";
+import { errorMessage, type AccessRole } from "@/lib/useSession";
 
-/** Asks for a PIN and hands it back only once the server accepts it. */
+/**
+ * Asks for a PIN and trades it with the server for a session token.
+ *
+ * The PIN never leaves this component: what is handed back, and what every
+ * later mutation carries, is the token.
+ */
 export function PinGate({
   tournamentId,
   tournamentName,
@@ -19,11 +24,11 @@ export function PinGate({
   tournamentId: Id<"tournaments">;
   tournamentName: string;
   slug: string;
-  role?: PinRole;
-  onUnlock: (pin: string) => void;
+  role?: AccessRole;
+  onUnlock: (token: string) => void;
 }) {
   const referee = role === "referee";
-  const verify = useMutation(api.tournaments.verifyPin);
+  const signIn = useMutation(api.tournaments.signIn);
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -33,8 +38,12 @@ export function PinGate({
     setError(null);
     setBusy(true);
     try {
-      await verify({ tournamentId, pin, role });
-      onUnlock(pin);
+      const result = await signIn({ tournamentId, pin, role });
+      if (!result.ok || !result.token) {
+        setError(result.error ?? "That PIN was not recognised.");
+        return;
+      }
+      onUnlock(result.token);
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {

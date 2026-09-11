@@ -29,6 +29,18 @@ export function scoringSummary(config: ScoringConfig): string {
   return `${config.pointsPerSet} points, ${games}, ${ending}`;
 }
 
+/**
+ * Does a category name read like a pairs event?
+ *
+ * Used to warn an organiser who names a category "Mens Doubles" but leaves it
+ * on Singles, which would silently drop every partner name. Kept here, and
+ * tested, because the same mistake inside a component is invisible: the hint
+ * simply never appears.
+ */
+export function looksLikeDoubles(name: string): boolean {
+  return /\b(doubles?|pairs?|mixed)\b/i.test(name);
+}
+
 export const STATUS_LABELS: Record<string, string> = {
   scheduled: "Scheduled",
   live: "On court",

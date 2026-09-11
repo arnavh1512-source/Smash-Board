@@ -9,7 +9,7 @@ import { CourtGrid } from "@/components/tournament/CourtGrid";
 import { OrderOfPlay } from "@/components/tournament/OrderOfPlay";
 import type { EntryLookup } from "@/components/tournament/MatchRow";
 import { DEFAULT_SCHEDULE, clockOf, dayOf } from "@/lib/schedule";
-import { errorMessage } from "@/lib/usePin";
+import { errorMessage } from "@/lib/useSession";
 
 interface ScheduleSettings {
   dayStart: string;
@@ -29,7 +29,7 @@ export function SchedulePanel({
   tournamentId,
   startDate,
   schedule,
-  pin,
+  token,
   matches,
   events,
   entries,
@@ -37,7 +37,7 @@ export function SchedulePanel({
   tournamentId: Id<"tournaments">;
   startDate?: string;
   schedule?: { dayStart: string; matchMinutes: number; restMinutes: number; courts: number };
-  pin: string;
+  token: string;
   matches: readonly Doc<"matches">[];
   events: readonly Doc<"events">[];
   entries: EntryLookup;
@@ -132,7 +132,7 @@ export function SchedulePanel({
             disabled={busy || !startDate}
             onClick={() =>
               run(async () => {
-                const outcome = await generate({ tournamentId, pin, ...draft });
+                const outcome = await generate({ tournamentId, token, ...draft });
                 setNotice(
                   `${outcome.scheduled} matches timetabled. Last match ends at ${clockOf(
                     outcome.lastFinish,
@@ -151,7 +151,7 @@ export function SchedulePanel({
               onClick={() =>
                 run(async () => {
                   if (!window.confirm("Clear every match time and court?")) return;
-                  await clear({ tournamentId, pin });
+                  await clear({ tournamentId, token });
                   setNotice("Timings cleared.");
                 })
               }

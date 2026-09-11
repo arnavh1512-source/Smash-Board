@@ -78,11 +78,11 @@ function sortMatches(rows: Doc<"matches">[]): Doc<"matches">[] {
 async function loadMatchForScorer(
   ctx: Parameters<typeof requireScorer>[0],
   matchId: Id<"matches">,
-  pin: string,
+  token: string,
 ) {
   const match = await ctx.db.get(matchId);
   if (!match) throw new ConvexError("That match no longer exists.");
-  await requireScorer(ctx, match.tournamentId, pin);
+  await requireScorer(ctx, match.tournamentId, token);
   const event = await ctx.db.get(match.eventId);
   if (!event) throw new ConvexError("That category no longer exists.");
   return { match, event };
@@ -92,11 +92,11 @@ async function loadMatchForScorer(
 async function loadMatchForOrganiser(
   ctx: Parameters<typeof requireOrganiser>[0],
   matchId: Id<"matches">,
-  pin: string,
+  token: string,
 ) {
   const match = await ctx.db.get(matchId);
   if (!match) throw new ConvexError("That match no longer exists.");
-  await requireOrganiser(ctx, match.tournamentId, pin);
+  await requireOrganiser(ctx, match.tournamentId, token);
   const event = await ctx.db.get(match.eventId);
   if (!event) throw new ConvexError("That category no longer exists.");
   return { match, event };
@@ -112,14 +112,14 @@ async function loadMatchForOrganiser(
 export const setScore = mutation({
   args: {
     matchId: v.id("matches"),
-    pin: v.string(),
+    token: v.string(),
     sets: v.array(v.object({ a: v.number(), b: v.number() })),
     /** "live" keeps the match on court; "completed" is inferred when decided. */
     markLive: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { match, event } = await loadMatchForScorer(ctx, args.matchId, args.pin);
+    const { match, event } = await loadMatchForScorer(ctx, args.matchId, args.token);
     if (!match.aId || !match.bId) {
       throw new ConvexError("Both sides must be decided before a score can be entered.");
     }
@@ -154,12 +154,12 @@ export const setScore = mutation({
 export const setWalkover = mutation({
   args: {
     matchId: v.id("matches"),
-    pin: v.string(),
+    token: v.string(),
     winnerId: v.union(v.id("entries"), v.null()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { match, event } = await loadMatchForScorer(ctx, args.matchId, args.pin);
+    const { match, event } = await loadMatchForScorer(ctx, args.matchId, args.token);
     if (args.winnerId && args.winnerId !== match.aId && args.winnerId !== match.bId) {
       throw new ConvexError("The winner must be one of the two sides in this match.");
     }
@@ -180,10 +180,10 @@ export const setWalkover = mutation({
 
 /** Wipe a result and pull the entrant back out of later rounds. */
 export const reset = mutation({
-  args: { matchId: v.id("matches"), pin: v.string() },
+  args: { matchId: v.id("matches"), token: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { match, event } = await loadMatchForScorer(ctx, args.matchId, args.pin);
+    const { match, event } = await loadMatchForScorer(ctx, args.matchId, args.token);
     await ctx.db.patch(args.matchId, {
       sets: [],
       status: "scheduled",
@@ -202,14 +202,14 @@ export const reset = mutation({
 export const setDetails = mutation({
   args: {
     matchId: v.id("matches"),
-    pin: v.string(),
+    token: v.string(),
     court: v.optional(v.string()),
     scheduledAt: v.optional(v.string()),
     status: v.optional(matchStatusValidator),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { match } = await loadMatchForOrganiser(ctx, args.matchId, args.pin);
+    const { match } = await loadMatchForOrganiser(ctx, args.matchId, args.token);
 
     const patch: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.court !== undefined) patch.court = args.court.trim().slice(0, 40) || undefined;

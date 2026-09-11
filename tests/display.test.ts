@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Doc } from "../convex/_generated/dataModel";
-import { STATUS_LABELS, entryName, scoringSummary, sideName } from "@/lib/display";
+import {
+  STATUS_LABELS,
+  entryName,
+  looksLikeDoubles,
+  scoringSummary,
+  sideName,
+} from "@/lib/display";
 import type { ScoringConfig } from "@/lib/scoring";
 
 const singles = { playerOne: "Anita Rao" } as Doc<"entries">;
@@ -68,3 +74,26 @@ describe("STATUS_LABELS", () => {
   });
 });
 
+
+describe("looksLikeDoubles", () => {
+  // A mangled word boundary once made this return false for every name, which
+  // silently switched the organiser's mismatch warning off. These cases pin it.
+  it.each([
+    "Mens Doubles",
+    "mens doubles",
+    "U-17 Double",
+    "Mixed Doubles",
+    "Womens Pairs",
+    "Open Pair",
+    "MIXED",
+  ])("spots %s as a pairs category", (name) => {
+    expect(looksLikeDoubles(name)).toBe(true);
+  });
+
+  it.each(["Mens Singles", "U-19 Singles", "Open", "", "Troubleshooting"])(
+    "leaves %s alone",
+    (name) => {
+      expect(looksLikeDoubles(name)).toBe(false);
+    },
+  );
+});

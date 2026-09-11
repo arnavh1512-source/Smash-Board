@@ -7,7 +7,7 @@ import type { Doc } from "../../../convex/_generated/dataModel";
 import type { EntryLookup } from "@/components/tournament/MatchRow";
 import { Alert, Badge, Button, Field, Input, cx } from "@/components/ui";
 import { scoringSummary, sideName, STATUS_LABELS } from "@/lib/display";
-import { errorMessage } from "@/lib/usePin";
+import { errorMessage } from "@/lib/useSession";
 import {
   addPoint,
   evaluateMatch,
@@ -43,13 +43,13 @@ export function ScoreDialog({
   match,
   event,
   entries,
-  pin,
+  token,
   onClose,
 }: {
   match: Doc<"matches">;
   event: Doc<"events">;
   entries: EntryLookup;
-  pin: string;
+  token: string;
   onClose: () => void;
 }) {
   const setScore = useMutation(api.matches.setScore);
@@ -243,7 +243,7 @@ export function ScoreDialog({
               className="min-h-12"
               disabled={busy || !bothDecided}
               onClick={() =>
-                run(() => setScore({ matchId: match._id, pin, sets: cleanSets() }), true)
+                run(() => setScore({ matchId: match._id, token, sets: cleanSets() }), true)
               }
             >
               {busy ? "Saving…" : "Save score"}
@@ -253,7 +253,7 @@ export function ScoreDialog({
               className="min-h-12"
               disabled={busy || !bothDecided}
               onClick={() =>
-                run(() => setScore({ matchId: match._id, pin, sets: cleanSets(), markLive: false }))
+                run(() => setScore({ matchId: match._id, token, sets: cleanSets(), markLive: false }))
               }
             >
               Save and keep open
@@ -287,7 +287,7 @@ export function ScoreDialog({
                 variant="secondary"
                 className="min-h-12"
                 disabled={busy}
-                onClick={() => run(() => setDetails({ matchId: match._id, pin, court, scheduledAt }))}
+                onClick={() => run(() => setDetails({ matchId: match._id, token, court, scheduledAt }))}
               >
                 Save court and time
               </Button>
@@ -305,7 +305,7 @@ export function ScoreDialog({
                     className="min-h-12"
                     disabled={busy}
                     onClick={() =>
-                      run(() => setWalkover({ matchId: match._id, pin, winnerId: aEntry._id }), true)
+                      run(() => setWalkover({ matchId: match._id, token, winnerId: aEntry._id }), true)
                     }
                   >
                     {aName} wins
@@ -317,7 +317,7 @@ export function ScoreDialog({
                     className="min-h-12"
                     disabled={busy}
                     onClick={() =>
-                      run(() => setWalkover({ matchId: match._id, pin, winnerId: bEntry._id }), true)
+                      run(() => setWalkover({ matchId: match._id, token, winnerId: bEntry._id }), true)
                     }
                   >
                     {bName} wins
@@ -335,7 +335,7 @@ export function ScoreDialog({
                   if (!window.confirm("Clear this match back to scheduled? Its score will be lost.")) {
                     return;
                   }
-                  void run(() => resetMatch({ matchId: match._id, pin }), true);
+                  void run(() => resetMatch({ matchId: match._id, token }), true);
                 }}
               >
                 Reset this match

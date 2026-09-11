@@ -39,10 +39,10 @@ function clean(value: string | undefined, max: number): string | undefined {
   return trimmed.slice(0, max);
 }
 
-async function loadEventForOrganiser(ctx: MutationCtx, eventId: Id<"events">, pin: string) {
+async function loadEventForOrganiser(ctx: MutationCtx, eventId: Id<"events">, token: string) {
   const event = await ctx.db.get(eventId);
   if (!event) throw new ConvexError("That category no longer exists.");
-  await requireOrganiser(ctx, event.tournamentId, pin);
+  await requireOrganiser(ctx, event.tournamentId, token);
   return event;
 }
 
@@ -83,7 +83,7 @@ function sortEntries(rows: Doc<"entries">[]): Doc<"entries">[] {
 export const add = mutation({
   args: {
     eventId: v.id("events"),
-    pin: v.string(),
+    token: v.string(),
     playerOne: v.string(),
     playerTwo: v.optional(v.string()),
     club: v.optional(v.string()),
@@ -92,14 +92,22 @@ export const add = mutation({
   },
   returns: v.id("entries"),
   handler: async (ctx, args) => {
-    const event = await loadEventForOrganiser(ctx, args.eventId, args.pin);
+    const event = await loadEventForOrganiser(ctx, args.eventId, args.token);
 
     const playerOne = clean(args.playerOne, 80);
     if (!playerOne) throw new ConvexError("Enter the player's name.");
-    const playerTwo = event.teamSize === 2 ? clean(args.playerTwo, 80) : undefined;
-    if (event.teamSize === 2 && !playerTwo) {
+    const partner = clean(args.playerTwo, 80);
+    if (event.teamSize === 2 && !partner) {
       throw new ConvexError("This is a doubles category, so enter both players.");
     }
+    // A singles category cannot hold a partner. Dropping it quietly is how a
+    // pair ends up on the scoreboard as one player, so say so instead.
+    if (event.teamSize === 1 && partner) {
+      throw new ConvexError(
+        "This is a singles category. Change it to doubles before entering a pair.",
+      );
+    }
+    const playerTwo = event.teamSize === 2 ? partner : undefined;
 
     const existing = await ctx.db
       .query("entries")
@@ -129,10 +137,10 @@ export const add = mutation({
  * Example line: "Arnav Shah / Ravi Patel, Ahmedabad SC"
  */
 export const addMany = mutation({
-  args: { eventId: v.id("events"), pin: v.string(), text: v.string() },
+  args: { eventId: v.id("events"), token: v.string(), text: v.string() },
   returns: v.object({ added: v.number(), skipped: v.array(v.string()) }),
   handler: async (ctx, args) => {
-    const event = await loadEventForOrganiser(ctx, args.eventId, args.pin);
+    const event = await loadEventForOrganiser(ctx, args.eventId, args.token);
 
     const existing = await ctx.db
       .query("entries")
@@ -158,6 +166,12 @@ export const addMany = mutation({
       }
       if (event.teamSize === 2 && players.length < 2) {
         skipped.push(`${line} (needs two players)`);
+        continue;
+      }
+      // Same reason as `add`: silently keeping only the first name is what
+      // turns a doubles pair into a singles entrant.
+      if (event.teamSize === 1 && players.length > 1) {
+        skipped.push(`${line} (singles category — change it to doubles first)`);
         continue;
       }
       await ctx.db.insert("entries", {
@@ -187,12 +201,12 @@ export const addMany = mutation({
  * many. The console calls it when the organiser opens an entrant for editing.
  */
 export const revealContact = mutation({
-  args: { entryId: v.id("entries"), pin: v.string() },
+  args: { entryId: v.id("entries"), token: v.string() },
   returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
     const entry = await ctx.db.get(args.entryId);
     if (!entry) throw new ConvexError("That entrant no longer exists.");
-    await requireOrganiser(ctx, entry.tournamentId, args.pin);
+    await requireOrganiser(ctx, entry.tournamentId, args.token);
     return entry.phone ?? null;
   },
 });
@@ -200,7 +214,7 @@ export const revealContact = mutation({
 export const update = mutation({
   args: {
     entryId: v.id("entries"),
-    pin: v.string(),
+    token: v.string(),
     playerOne: v.optional(v.string()),
     playerTwo: v.optional(v.string()),
     club: v.optional(v.string()),
@@ -212,7 +226,7 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const entry = await ctx.db.get(args.entryId);
     if (!entry) throw new ConvexError("That entrant no longer exists.");
-    await requireOrganiser(ctx, entry.tournamentId, args.pin);
+    await requireOrganiser(ctx, entry.tournamentId, args.token);
 
     const patch: Record<string, unknown> = {};
     if (args.playerOne !== undefined) {
@@ -220,7 +234,14 @@ export const update = mutation({
       if (!name) throw new ConvexError("Enter the player's name.");
       patch.playerOne = name;
     }
-    if (args.playerTwo !== undefined) patch.playerTwo = clean(args.playerTwo, 80);
+    if (args.playerTwo !== undefined) {
+      const partner = clean(args.playerTwo, 80);
+      const event = await ctx.db.get(entry.eventId);
+      if (event?.teamSize === 2 && !partner) {
+        throw new ConvexError("This is a doubles category, so enter both players.");
+      }
+      patch.playerTwo = event?.teamSize === 2 ? partner : undefined;
+    }
     if (args.club !== undefined) patch.club = clean(args.club, 80);
     if (args.phone !== undefined) patch.phone = clean(args.phone, 32);
     if (args.seed !== undefined) patch.seed = Math.max(0, Math.min(args.seed, 64));
@@ -232,12 +253,12 @@ export const update = mutation({
 });
 
 export const remove = mutation({
-  args: { entryId: v.id("entries"), pin: v.string() },
+  args: { entryId: v.id("entries"), token: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
     const entry = await ctx.db.get(args.entryId);
     if (!entry) return null;
-    await requireOrganiser(ctx, entry.tournamentId, args.pin);
+    await requireOrganiser(ctx, entry.tournamentId, args.token);
 
     // Clear the entrant out of any match they were drawn into so the bracket
     // never points at a deleted row.

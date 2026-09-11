@@ -4,11 +4,13 @@ import { scheduleValidator } from "./schema";
 import type { Id } from "./_generated/dataModel";
 import {
   assertPinShape,
+  attemptSignIn,
   hashPin,
+  issueToken,
   newSalt,
   publicTournament,
   requireOrganiser,
-  requireScorer,
+  type AccessRole,
 } from "./lib/auth";
 
 const MAX_NAME = 120;
@@ -71,7 +73,12 @@ export const create = mutation({
     pin: v.string(),
     isPublic: v.boolean(),
   },
-  returns: v.object({ tournamentId: v.id("tournaments"), slug: v.string() }),
+  returns: v.object({
+    tournamentId: v.id("tournaments"),
+    slug: v.string(),
+    /** The organiser is signed in the moment they create the tournament. */
+    token: v.string(),
+  }),
   handler: async (ctx, args) => {
     const name = args.name.trim();
     if (name.length < 3) throw new ConvexError("Give the tournament a name of at least 3 characters.");
@@ -113,7 +120,9 @@ export const create = mutation({
       updatedAt: now,
     });
 
-    return { tournamentId, slug };
+    const tournament = await ctx.db.get(tournamentId);
+    if (!tournament) throw new ConvexError("Could not create the tournament. Please try again.");
+    return { tournamentId, slug, token: await issueToken(tournament, "organiser") };
   },
 });
 
@@ -149,7 +158,7 @@ export const listPublic = query({
 export const update = mutation({
   args: {
     tournamentId: v.id("tournaments"),
-    pin: v.string(),
+    token: v.string(),
     name: v.optional(v.string()),
     venue: v.optional(v.string()),
     startDate: v.optional(v.string()),
@@ -161,7 +170,7 @@ export const update = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireOrganiser(ctx, args.tournamentId, args.pin);
+    await requireOrganiser(ctx, args.tournamentId, args.token);
 
     const patch: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.name !== undefined) {
@@ -183,10 +192,11 @@ export const update = mutation({
 });
 
 export const changePin = mutation({
-  args: { tournamentId: v.id("tournaments"), pin: v.string(), newPin: v.string() },
-  returns: v.null(),
+  args: { tournamentId: v.id("tournaments"), token: v.string(), newPin: v.string() },
+  /** A fresh token, because the old one was signed with the old PIN hash. */
+  returns: v.string(),
   handler: async (ctx, args) => {
-    await requireOrganiser(ctx, args.tournamentId, args.pin);
+    await requireOrganiser(ctx, args.tournamentId, args.token);
     assertPinShape(args.newPin);
     const salt = newSalt();
     // A new salt invalidates every hash made with the old one, so a referee PIN
@@ -200,27 +210,41 @@ export const changePin = mutation({
       pinLockedUntil: undefined,
       updatedAt: Date.now(),
     });
-    return null;
+    const rotated = await ctx.db.get(args.tournamentId);
+    if (!rotated) throw new ConvexError("That tournament no longer exists.");
+    return await issueToken(rotated, "organiser");
   },
 });
 
 /**
- * Used by the sign-in gates. Returns nothing; throws when the PIN is wrong.
+ * The one door where a PIN is accepted.
  *
  * `role` says which door is being knocked on: the referee console accepts
  * either PIN, the organiser console accepts only the organiser's.
+ *
+ * A wrong PIN comes back as `{ ok: false }` rather than as a thrown error. A
+ * Convex mutation is a transaction, so throwing here would roll back the write
+ * that records the wrong guess and the lockout could never accumulate.
  */
-export const verifyPin = mutation({
+export const signIn = mutation({
   args: {
     tournamentId: v.id("tournaments"),
     pin: v.string(),
     role: v.optional(v.union(v.literal("organiser"), v.literal("referee"))),
   },
-  returns: v.null(),
+  returns: v.object({
+    ok: v.boolean(),
+    token: v.optional(v.string()),
+    role: v.optional(v.union(v.literal("organiser"), v.literal("referee"))),
+    error: v.optional(v.string()),
+  }),
   handler: async (ctx, args) => {
-    if (args.role === "referee") await requireScorer(ctx, args.tournamentId, args.pin);
-    else await requireOrganiser(ctx, args.tournamentId, args.pin);
-    return null;
+    const allow: AccessRole[] =
+      args.role === "referee" ? ["organiser", "referee"] : ["organiser"];
+    const result = await attemptSignIn(ctx, args.tournamentId, args.pin, allow);
+    return result.ok
+      ? { ok: true, token: result.token, role: result.role }
+      : { ok: false, error: result.error };
   },
 });
 
@@ -233,12 +257,12 @@ export const verifyPin = mutation({
 export const setRefereePin = mutation({
   args: {
     tournamentId: v.id("tournaments"),
-    pin: v.string(),
+    token: v.string(),
     refereePin: v.union(v.string(), v.null()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const tournament = await requireOrganiser(ctx, args.tournamentId, args.pin);
+    const tournament = await requireOrganiser(ctx, args.tournamentId, args.token);
 
     if (args.refereePin === null) {
       await ctx.db.patch(args.tournamentId, {
@@ -259,10 +283,10 @@ export const setRefereePin = mutation({
 });
 
 export const remove = mutation({
-  args: { tournamentId: v.id("tournaments"), pin: v.string() },
+  args: { tournamentId: v.id("tournaments"), token: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireOrganiser(ctx, args.tournamentId, args.pin);
+    await requireOrganiser(ctx, args.tournamentId, args.token);
 
     const matches = await ctx.db
       .query("matches")

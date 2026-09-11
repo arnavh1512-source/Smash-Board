@@ -19,7 +19,7 @@ import {
 export const generate = mutation({
   args: {
     eventId: v.id("events"),
-    pin: v.string(),
+    token: v.string(),
     /** Shuffle unseeded entrants before placing them. */
     randomise: v.boolean(),
   },
@@ -27,7 +27,7 @@ export const generate = mutation({
   handler: async (ctx, args) => {
     const event = await ctx.db.get(args.eventId);
     if (!event) throw new ConvexError("That category no longer exists.");
-    await requireOrganiser(ctx, event.tournamentId, args.pin);
+    await requireOrganiser(ctx, event.tournamentId, args.token);
 
     const allEntries = await ctx.db
       .query("entries")
@@ -36,6 +36,20 @@ export const generate = mutation({
     const active = allEntries.filter((e) => !e.withdrawn);
     if (active.length < 2) {
       throw new ConvexError("Add at least two entrants before making the draw.");
+    }
+
+    // A category switched from singles to doubles keeps the entrants it already
+    // had, and those are one name short. Drawing them would put a half pair on
+    // court, so name them and stop.
+    if (event.teamSize === 2) {
+      const halfPairs = active.filter((e) => !e.playerTwo);
+      if (halfPairs.length > 0) {
+        const named = halfPairs.slice(0, 3).map((e) => e.playerOne).join(", ");
+        throw new ConvexError(
+          `This is a doubles category, so every entry needs two players. Add a partner for ${named}` +
+            (halfPairs.length > 3 ? ` and ${halfPairs.length - 3} more.` : "."),
+        );
+      }
     }
 
     // Seeded entrants keep their order; the rest are optionally shuffled so the
@@ -104,12 +118,12 @@ export const generate = mutation({
 });
 
 export const clear = mutation({
-  args: { eventId: v.id("events"), pin: v.string() },
+  args: { eventId: v.id("events"), token: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
     const event = await ctx.db.get(args.eventId);
     if (!event) throw new ConvexError("That category no longer exists.");
-    await requireOrganiser(ctx, event.tournamentId, args.pin);
+    await requireOrganiser(ctx, event.tournamentId, args.token);
 
     const existing = await ctx.db
       .query("matches")

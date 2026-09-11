@@ -2,13 +2,28 @@
  * Access control.
  *
  * A tournament is guarded by a PIN chosen when it is created. The PIN is never
- * stored; only a SHA-256 hash of `salt + pin` is kept. Repeated wrong guesses
- * lock the tournament out for a short window so the PIN cannot be brute forced
- * over the public API.
+ * stored; only a SHA-256 hash of `salt + pin` is kept.
  *
  * An organiser may also set a second, optional referee PIN. It unlocks score
  * entry and nothing else, so an umpire can be handed a phone without also being
  * handed the power to redraw the event or delete it.
+ *
+ * The PIN itself is accepted at exactly one place: `attemptSignIn`, which trades
+ * it for a short-lived signed token. Every other mutation takes the token and
+ * never sees the PIN. Two reasons:
+ *
+ *  1. A Convex mutation is a transaction. A guard that recorded a wrong guess
+ *     and then threw would have that write rolled back with the throw, so the
+ *     failure counter could never accumulate and the lockout could never fire.
+ *     `attemptSignIn` returns a verdict instead of throwing, so the counter
+ *     commits and the lockout works.
+ *  2. With one door, rate limiting has one place to live. A guesser cannot
+ *     sidestep the counter by hammering some other mutation that also happened
+ *     to take a PIN.
+ *
+ * The token is stateless: a MAC over the tournament, the role, the expiry and
+ * the PIN hash for that role, keyed by the tournament's own salt. Nothing is
+ * stored, and rotating a PIN silently invalidates every token issued for it.
  */
 
 import { ConvexError } from "convex/values";
@@ -17,6 +32,9 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 
 const MAX_ATTEMPTS = 8;
 const LOCKOUT_MS = 10 * 60 * 1000;
+
+/** A token lasts a tournament day, then the organiser signs in again. */
+export const SESSION_MS = 12 * 60 * 60 * 1000;
 
 export const MIN_PIN_LENGTH = 4;
 export const MAX_PIN_LENGTH = 64;
@@ -64,31 +82,95 @@ export async function loadTournament(
 /** What a caller is allowed to do once their PIN checks out. */
 export type AccessRole = "organiser" | "referee";
 
+/** The PIN hash a role's token is bound to, or null when that role has no PIN. */
+function hashForRole(tournament: Doc<"tournaments">, role: AccessRole): string | null {
+  return role === "organiser" ? tournament.pinHash : (tournament.refereePinHash ?? null);
+}
+
+async function sign(secret: string, message: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  return toHex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message)));
+}
+
 /**
- * Check a PIN against a tournament.
+ * Mint a session token for a role that has already been proven.
+ *
+ * The role's PIN hash is part of the signed message, so changing that PIN
+ * invalidates its outstanding tokens without touching the other role's.
+ */
+async function mintToken(
+  tournament: Doc<"tournaments">,
+  role: AccessRole,
+  expiresAt: number,
+): Promise<string> {
+  const bound = hashForRole(tournament, role);
+  if (bound === null) throw new ConvexError("That role has no PIN set.");
+  const mac = await sign(
+    tournament.pinSalt,
+    `${tournament._id}:${role}:${expiresAt}:${bound}`,
+  );
+  return `${role}.${expiresAt}.${mac}`;
+}
+
+/** The role a token proves, or null if it is malformed, expired or forged. */
+async function readToken(
+  tournament: Doc<"tournaments">,
+  token: string,
+  now: number,
+): Promise<AccessRole | null> {
+  if (typeof token !== "string") return null;
+  const [role, expiry, mac] = token.split(".");
+  if (role !== "organiser" && role !== "referee") return null;
+  const expiresAt = Number(expiry);
+  if (!Number.isSafeInteger(expiresAt) || expiresAt <= now) return null;
+  if (typeof mac !== "string" || mac.length !== 64) return null;
+  if (hashForRole(tournament, role) === null) return null;
+  const expected = await mintToken(tournament, role, expiresAt);
+  return timingSafeEqual(token, expected) ? role : null;
+}
+
+/** How long is left on a lockout, worded the same wherever it is reported. */
+function lockoutMessage(remainingMs: number): string {
+  const minutes = Math.ceil(remainingMs / 60000);
+  return `Too many wrong PINs. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
+}
+
+/** What the sign-in door reports back. It never throws for a wrong PIN. */
+export type SignInResult =
+  | { ok: true; token: string; role: AccessRole; expiresAt: number }
+  | { ok: false; error: string };
+
+/**
+ * Check a PIN and, if it is right, hand back a token.
  *
  * `allow` names the roles whose PIN will be accepted. The failure counter is
  * shared across both PINs on purpose: the lockout protects the tournament, and
  * a guesser should not get a fresh eight tries by switching which PIN they
  * claim to be entering.
+ *
+ * Returns a verdict rather than throwing, because a throw would roll back the
+ * very write that records the wrong guess.
  */
-async function verifyPinFor(
+export async function attemptSignIn(
   ctx: MutationCtx,
   tournamentId: Id<"tournaments">,
   pin: string,
   allow: readonly AccessRole[],
-): Promise<{ tournament: Doc<"tournaments">; role: AccessRole }> {
+): Promise<SignInResult> {
   const tournament = await loadTournament(ctx, tournamentId);
   const now = Date.now();
 
   if (tournament.pinLockedUntil && tournament.pinLockedUntil > now) {
-    const minutes = Math.ceil((tournament.pinLockedUntil - now) / 60000);
-    throw new ConvexError(
-      `Too many wrong PINs. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
-    );
+    return { ok: false, error: lockoutMessage(tournament.pinLockedUntil - now) };
   }
 
-  const candidate = await hashPin(pin ?? "", tournament.pinSalt);
+  const candidate = await hashPin(typeof pin === "string" ? pin : "", tournament.pinSalt);
   let matched: AccessRole | null = null;
   if (allow.includes("organiser") && timingSafeEqual(candidate, tournament.pinHash)) {
     matched = "organiser";
@@ -102,45 +184,88 @@ async function verifyPinFor(
 
   if (!matched) {
     const failed = (tournament.failedPinAttempts ?? 0) + 1;
+    const locked = failed >= MAX_ATTEMPTS;
     await ctx.db.patch(tournamentId, {
       failedPinAttempts: failed,
-      pinLockedUntil: failed >= MAX_ATTEMPTS ? now + LOCKOUT_MS : undefined,
+      pinLockedUntil: locked ? now + LOCKOUT_MS : undefined,
     });
-    throw new ConvexError(
-      allow.includes("referee") && allow.includes("organiser")
-        ? "That PIN was not recognised."
-        : "Wrong organiser PIN.",
-    );
+    // The guess that trips the lock says so. Telling it apart from the guesses
+    // before it costs an attacker nothing they could not learn by trying once
+    // more, and saves an organiser who mistyped from guessing at why the right
+    // PIN suddenly stopped working.
+    if (locked) return { ok: false, error: lockoutMessage(LOCKOUT_MS) };
+    return {
+      ok: false,
+      error:
+        allow.includes("referee") && allow.includes("organiser")
+          ? "That PIN was not recognised."
+          : "Wrong organiser PIN.",
+    };
   }
 
   if (tournament.failedPinAttempts || tournament.pinLockedUntil) {
     await ctx.db.patch(tournamentId, { failedPinAttempts: 0, pinLockedUntil: undefined });
   }
-  return { tournament, role: matched };
+
+  const expiresAt = now + SESSION_MS;
+  return {
+    ok: true,
+    token: await mintToken(tournament, matched, expiresAt),
+    role: matched,
+    expiresAt,
+  };
+}
+
+/** Mint a token for someone who has just proved themselves another way. */
+export async function issueToken(
+  tournament: Doc<"tournaments">,
+  role: AccessRole,
+): Promise<string> {
+  return await mintToken(tournament, role, Date.now() + SESSION_MS);
+}
+
+async function requireToken(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+  token: string,
+  allow: readonly AccessRole[],
+): Promise<{ tournament: Doc<"tournaments">; role: AccessRole }> {
+  const tournament = await loadTournament(ctx, tournamentId);
+  const role = await readToken(tournament, token, Date.now());
+  if (role === null) {
+    throw new ConvexError("Your session has expired. Please enter the PIN again.");
+  }
+  // A referee holding a perfectly good token is not expired, they are simply
+  // not allowed here, and saying so stops them hunting for a bug that is not
+  // there.
+  if (!allow.includes(role)) {
+    throw new ConvexError("Only the organiser can do that. Sign in with the organiser PIN.");
+  }
+  return { tournament, role };
 }
 
 /**
- * Require the organiser PIN. Throws a ConvexError the UI can show directly.
+ * Require an organiser session. Throws a ConvexError the UI can show directly.
  */
 export async function requireOrganiser(
   ctx: MutationCtx,
   tournamentId: Id<"tournaments">,
-  pin: string,
+  token: string,
 ): Promise<Doc<"tournaments">> {
-  const { tournament } = await verifyPinFor(ctx, tournamentId, pin, ["organiser"]);
+  const { tournament } = await requireToken(ctx, tournamentId, token, ["organiser"]);
   return tournament;
 }
 
 /**
- * Require a PIN that is allowed to enter scores: either the organiser's, or the
- * referee PIN when the organiser has set one.
+ * Require a session that is allowed to enter scores: the organiser's, or a
+ * referee's when the organiser has set a referee PIN.
  */
 export async function requireScorer(
   ctx: MutationCtx,
   tournamentId: Id<"tournaments">,
-  pin: string,
+  token: string,
 ): Promise<{ tournament: Doc<"tournaments">; role: AccessRole }> {
-  return await verifyPinFor(ctx, tournamentId, pin, ["organiser", "referee"]);
+  return await requireToken(ctx, tournamentId, token, ["organiser", "referee"]);
 }
 
 /** Strip the PIN hash before anything is sent to a browser. */

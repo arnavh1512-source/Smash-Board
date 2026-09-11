@@ -7,7 +7,8 @@ import type { Doc, Id } from "../../../convex/_generated/dataModel";
 import { Alert, Button, Checkbox, Field, Input, Section, Select } from "@/components/ui";
 import { ScoringFields } from "./ScoringFields";
 import { DEFAULT_SCORING, type ScoringConfig } from "@/lib/scoring";
-import { errorMessage } from "@/lib/usePin";
+import { looksLikeDoubles } from "@/lib/display";
+import { errorMessage } from "@/lib/useSession";
 
 type Format = Doc<"events">["format"];
 
@@ -50,12 +51,12 @@ function draftFrom(event: Doc<"events"> | null): Draft {
 /** Create a category, or edit the one passed in. */
 export function EventForm({
   tournamentId,
-  pin,
+  token,
   event,
   onDone,
 }: {
   tournamentId: Id<"tournaments">;
-  pin: string;
+  token: string;
   event: Doc<"events"> | null;
   onDone: () => void;
 }) {
@@ -70,14 +71,18 @@ export function EventForm({
     setError(null);
     setBusy(true);
     try {
-      if (event) await update({ eventId: event._id, pin, ...draft });
-      else await create({ tournamentId, pin, ...draft });
+      if (event) await update({ eventId: event._id, token, ...draft });
+      else await create({ tournamentId, token, ...draft });
       onDone();
     } catch (caught) {
       setError(errorMessage(caught));
       setBusy(false);
     }
   }
+
+  // "Mens Doubles" left on Singles is the single easiest way to lose every
+  // partner name, so the form says so before the entrants are typed in.
+  const teamSizeMismatch = looksLikeDoubles(draft.name) && draft.teamSize !== 2;
 
   const usesGroups = draft.format === "groups_knockout";
   const usesRoundRobin = draft.format === "round_robin" || usesGroups;
@@ -110,6 +115,13 @@ export function EventForm({
             </Select>
           </Field>
         </div>
+
+        {teamSizeMismatch ? (
+          <Alert kind="info">
+            This category is named like a doubles event but is set to Singles, so only one
+            name per entry will be kept. Switch it to Doubles if entrants play in pairs.
+          </Alert>
+        ) : null}
 
         <Field label="Draw format">
           <Select

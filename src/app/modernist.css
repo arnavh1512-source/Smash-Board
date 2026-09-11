@@ -299,7 +299,9 @@
     color: inherit;
   }
   .nav-brand:hover { color: inherit; text-decoration: none; }
-  .nav a { color: inherit; text-decoration: none; font-size: 14px; }
+  /* Scoped away from the wordmark: a bare `.nav a` outranks `.nav-brand`, which
+     would quietly shrink the brand to link size. */
+  .nav a:not(.nav-brand) { color: inherit; text-decoration: none; font-size: 14px; }
   .nav a:hover,
   .nav a[aria-current="page"] { color: var(--color-accent-ink); }
 

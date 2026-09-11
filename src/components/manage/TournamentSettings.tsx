@@ -7,7 +7,7 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Alert, Button, Checkbox, Field, Input, Section, Textarea } from "@/components/ui";
 import { ShareBar } from "@/components/tournament/ShareBar";
-import { errorMessage } from "@/lib/usePin";
+import { errorMessage } from "@/lib/useSession";
 
 export interface TournamentDetails {
   _id: Id<"tournaments">;
@@ -23,7 +23,7 @@ export interface TournamentDetails {
   hasRefereePin: boolean;
 }
 
-function DetailsForm({ tournament, pin }: { tournament: TournamentDetails; pin: string }) {
+function DetailsForm({ tournament, token }: { tournament: TournamentDetails; token: string }) {
   const update = useMutation(api.tournaments.update);
   const [draft, setDraft] = useState({
     name: tournament.name,
@@ -45,7 +45,7 @@ function DetailsForm({ tournament, pin }: { tournament: TournamentDetails; pin: 
     setSaved(false);
     setBusy(true);
     try {
-      await update({ tournamentId: tournament._id, pin, ...draft });
+      await update({ tournamentId: tournament._id, token, ...draft });
       setSaved(true);
     } catch (caught) {
       setError(errorMessage(caught));
@@ -134,14 +134,14 @@ function DetailsForm({ tournament, pin }: { tournament: TournamentDetails; pin: 
 
 function PinForm({
   tournamentId,
-  pin,
+  token,
   hasRefereePin,
-  onPinChanged,
+  onReissued,
 }: {
   tournamentId: Id<"tournaments">;
-  pin: string;
+  token: string;
   hasRefereePin: boolean;
-  onPinChanged: (next: string) => void;
+  onReissued: (next: string) => void;
 }) {
   const changePin = useMutation(api.tournaments.changePin);
   const [newPin, setNewPin] = useState("");
@@ -160,8 +160,9 @@ function PinForm({
     }
     setBusy(true);
     try {
-      await changePin({ tournamentId, pin, newPin });
-      onPinChanged(newPin);
+      // The old token was signed with the old PIN hash, so the server hands
+      // back a replacement rather than logging the organiser straight out.
+      onReissued(await changePin({ tournamentId, token, newPin }));
       setNewPin("");
       setConfirmPin("");
       setSaved(true);
@@ -230,10 +231,10 @@ function PinForm({
  */
 function RefereePinForm({
   tournament,
-  pin,
+  token,
 }: {
   tournament: TournamentDetails;
-  pin: string;
+  token: string;
 }) {
   const setRefereePin = useMutation(api.tournaments.setRefereePin);
   const [value, setValue] = useState("");
@@ -247,7 +248,7 @@ function RefereePinForm({
     setNotice(null);
     setBusy(true);
     try {
-      await setRefereePin({ tournamentId: tournament._id, pin, refereePin: value });
+      await setRefereePin({ tournamentId: tournament._id, token, refereePin: value });
       setValue("");
       setNotice("Referee PIN saved. Share it with your umpires along with the scoring link.");
     } catch (caught) {
@@ -265,7 +266,7 @@ function RefereePinForm({
     setNotice(null);
     setBusy(true);
     try {
-      await setRefereePin({ tournamentId: tournament._id, pin, refereePin: null });
+      await setRefereePin({ tournamentId: tournament._id, token, refereePin: null });
       setNotice("Referee PIN removed.");
     } catch (caught) {
       setError(errorMessage(caught));
@@ -332,11 +333,11 @@ function RefereePinForm({
 function DangerZone({
   tournamentId,
   name,
-  pin,
+  token,
 }: {
   tournamentId: Id<"tournaments">;
   name: string;
-  pin: string;
+  token: string;
 }) {
   const remove = useMutation(api.tournaments.remove);
   const router = useRouter();
@@ -348,7 +349,7 @@ function DangerZone({
     setError(null);
     setBusy(true);
     try {
-      await remove({ tournamentId, pin });
+      await remove({ tournamentId, token });
       router.push("/");
     } catch (caught) {
       setError(errorMessage(caught));
@@ -385,24 +386,24 @@ function DangerZone({
 
 export function TournamentSettings({
   tournament,
-  pin,
-  onPinChanged,
+  token,
+  onReissued,
 }: {
   tournament: TournamentDetails;
-  pin: string;
-  onPinChanged: (next: string) => void;
+  token: string;
+  onReissued: (next: string) => void;
 }) {
   return (
     <div>
-      <DetailsForm tournament={tournament} pin={pin} />
+      <DetailsForm tournament={tournament} token={token} />
       <PinForm
         tournamentId={tournament._id}
-        pin={pin}
+        token={token}
         hasRefereePin={tournament.hasRefereePin}
-        onPinChanged={onPinChanged}
+        onReissued={onReissued}
       />
-      <RefereePinForm tournament={tournament} pin={pin} />
-      <DangerZone tournamentId={tournament._id} name={tournament.name} pin={pin} />
+      <RefereePinForm tournament={tournament} token={token} />
+      <DangerZone tournamentId={tournament._id} name={tournament.name} token={token} />
     </div>
   );
 }

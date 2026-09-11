@@ -65,7 +65,7 @@ function feedersFor(
 export const generate = mutation({
   args: {
     tournamentId: v.id("tournaments"),
-    pin: v.string(),
+    token: v.string(),
     dayStart: v.string(),
     matchMinutes: v.number(),
     restMinutes: v.number(),
@@ -73,7 +73,7 @@ export const generate = mutation({
   },
   returns: v.object({ scheduled: v.number(), lastFinish: v.string() }),
   handler: async (ctx, args) => {
-    const tournament = await requireOrganiser(ctx, args.tournamentId, args.pin);
+    const tournament = await requireOrganiser(ctx, args.tournamentId, args.token);
     if (!tournament.startDate) {
       throw new ConvexError("Set the tournament start date before planning the order of play.");
     }
@@ -176,10 +176,10 @@ export const generate = mutation({
 });
 
 export const clear = mutation({
-  args: { tournamentId: v.id("tournaments"), pin: v.string() },
+  args: { tournamentId: v.id("tournaments"), token: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireOrganiser(ctx, args.tournamentId, args.pin);
+    await requireOrganiser(ctx, args.tournamentId, args.token);
     const matches = await ctx.db
       .query("matches")
       .withIndex("by_tournament", (q) => q.eq("tournamentId", args.tournamentId))

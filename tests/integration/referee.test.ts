@@ -1,9 +1,14 @@
 /**
- * Integration tests for the referee PIN.
+ * Integration tests for the referee PIN and the sign-in door.
  *
  * The point of the second PIN is that an umpire can be handed a phone without
  * being handed the tournament. These tests pin down both halves of that: what a
- * referee PIN opens, and — more importantly — what it does not.
+ * referee session opens, and — more importantly — what it does not.
+ *
+ * They also cover the lockout, which is the reason `signIn` returns a verdict
+ * instead of throwing: a Convex mutation is a transaction, so a guard that
+ * recorded a wrong guess and then threw would lose that write to the rollback
+ * and the counter would never climb.
  *
  * Like the rest of the integration suite these run against the deployment in
  * NEXT_PUBLIC_CONVEX_URL via `npm run test:integration`.
@@ -28,6 +33,8 @@ let slug: string;
 let eventId: Id<"events">;
 let matchId: Id<"matches">;
 let sideA: Id<"entries"> | null;
+let token: string;
+let refToken: string;
 
 /** See the note on the same helper in backend.test.ts — production redacts `message`. */
 async function rejects(call: Promise<unknown>): Promise<string> {
@@ -41,6 +48,21 @@ async function rejects(call: Promise<unknown>): Promise<string> {
     return error instanceof Error ? error.message : String(error);
   }
   throw new Error("Expected the call to be rejected, but it succeeded.");
+}
+
+function signIn(id: Id<"tournaments">, pin: string, role?: "organiser" | "referee") {
+  return client.mutation(api.tournaments.signIn, { tournamentId: id, pin, role });
+}
+
+/** Sign in and insist it worked, for the setup steps that assume a good PIN. */
+async function tokenFor(
+  id: Id<"tournaments">,
+  pin: string,
+  role?: "organiser" | "referee",
+): Promise<string> {
+  const result = await signIn(id, pin, role);
+  if (!result.ok || !result.token) throw new Error(result.error ?? "Sign-in failed.");
+  return result.token;
 }
 
 async function makeTournament(name: string) {
@@ -58,10 +80,11 @@ beforeAll(async () => {
   const created = await makeTournament("Referee Run");
   tournamentId = created.tournamentId;
   slug = created.slug;
+  token = created.token;
 
   eventId = await client.mutation(api.events.create, {
     tournamentId,
-    pin: PIN,
+    token,
     name: "Men's Singles",
     teamSize: 1,
     format: "knockout",
@@ -74,10 +97,10 @@ beforeAll(async () => {
 
   await client.mutation(api.entries.addMany, {
     eventId,
-    pin: PIN,
+    token,
     text: ["Anita Rao", "Bhavin Shah"].join("\n"),
   });
-  await client.mutation(api.draws.generate, { eventId, pin: PIN, randomise: false });
+  await client.mutation(api.draws.generate, { eventId, token, randomise: false });
 
   const matches = await client.query(api.matches.listByEvent, { eventId });
   matchId = matches[0]._id;
@@ -85,14 +108,46 @@ beforeAll(async () => {
 
   await client.mutation(api.tournaments.setRefereePin, {
     tournamentId,
-    pin: PIN,
+    token,
     refereePin: REFEREE_PIN,
   });
+  refToken = await tokenFor(tournamentId, REFEREE_PIN, "referee");
 }, 60_000);
 
 afterAll(async () => {
-  if (tournamentId) await client.mutation(api.tournaments.remove, { tournamentId, pin: PIN });
+  if (tournamentId) await client.mutation(api.tournaments.remove, { tournamentId, token });
 }, 60_000);
+
+describe("the sign-in door", () => {
+  it("hands back a token the guarded mutations accept", async () => {
+    const result = await signIn(tournamentId, PIN);
+    expect(result.ok).toBe(true);
+    expect(result.role).toBe("organiser");
+    expect(typeof result.token).toBe("string");
+  });
+
+  it("reports a wrong PIN instead of throwing", async () => {
+    const result = await signIn(tournamentId, WRONG_PIN);
+    expect(result.ok).toBe(false);
+    expect(result.token).toBeUndefined();
+    expect(result.error).toMatch(/PIN/i);
+  });
+
+  it("never lets a token be forged from its own shape", async () => {
+    const forged = `organiser.${Date.now() + 3_600_000}.${"0".repeat(64)}`;
+    expect(
+      await rejects(client.mutation(api.tournaments.update, { tournamentId, token: forged, name: "Hijacked" })),
+    ).toMatch(/session/i);
+  });
+
+  it("refuses a token whose expiry has been pushed forward by hand", async () => {
+    const [role, , mac] = (await tokenFor(tournamentId, PIN)).split(".");
+    const stretched = `${role}.${Date.now() + 90 * 24 * 3_600_000}.${mac}`;
+    expect(
+      await rejects(client.mutation(api.tournaments.update, { tournamentId, token: stretched, name: "Hijacked" })),
+    ).toMatch(/session/i);
+  });
+});
 
 describe("setting the referee PIN", () => {
   it("tells the public page a referee PIN exists without leaking it", async () => {
@@ -104,22 +159,14 @@ describe("setting the referee PIN", () => {
 
   it("refuses a referee PIN that is the same as the organiser PIN", async () => {
     const message = await rejects(
-      client.mutation(api.tournaments.setRefereePin, {
-        tournamentId,
-        pin: PIN,
-        refereePin: PIN,
-      }),
+      client.mutation(api.tournaments.setRefereePin, { tournamentId, token, refereePin: PIN }),
     );
     expect(message).toMatch(/different|same/i);
   });
 
   it("refuses a referee PIN that is too short to be worth having", async () => {
     const message = await rejects(
-      client.mutation(api.tournaments.setRefereePin, {
-        tournamentId,
-        pin: PIN,
-        refereePin: "12",
-      }),
+      client.mutation(api.tournaments.setRefereePin, { tournamentId, token, refereePin: "12" }),
     );
     expect(message).toMatch(/Referee PIN/i);
   });
@@ -128,37 +175,30 @@ describe("setting the referee PIN", () => {
     const message = await rejects(
       client.mutation(api.tournaments.setRefereePin, {
         tournamentId,
-        pin: REFEREE_PIN,
+        token: refToken,
         refereePin: "778899",
       }),
     );
-    expect(message).toMatch(/PIN/i);
+    expect(message).toMatch(/organiser/i);
   });
 });
 
 describe("the two sign-in doors", () => {
   it("opens the referee console with either PIN", async () => {
-    await expect(
-      client.mutation(api.tournaments.verifyPin, {
-        tournamentId,
-        pin: REFEREE_PIN,
-        role: "referee",
-      }),
-    ).resolves.toBeNull();
-    await expect(
-      client.mutation(api.tournaments.verifyPin, { tournamentId, pin: PIN, role: "referee" }),
-    ).resolves.toBeNull();
+    await expect(signIn(tournamentId, REFEREE_PIN, "referee")).resolves.toMatchObject({
+      ok: true,
+      role: "referee",
+    });
+    await expect(signIn(tournamentId, PIN, "referee")).resolves.toMatchObject({
+      ok: true,
+      role: "organiser",
+    });
   });
 
   it("opens the organiser console only with the organiser PIN", async () => {
-    const message = await rejects(
-      client.mutation(api.tournaments.verifyPin, {
-        tournamentId,
-        pin: REFEREE_PIN,
-        role: "organiser",
-      }),
-    );
-    expect(message).toMatch(/organiser PIN/i);
+    const result = await signIn(tournamentId, REFEREE_PIN, "organiser");
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/organiser PIN/i);
   });
 });
 
@@ -166,7 +206,7 @@ describe("what a referee may do", () => {
   it("enters a score", async () => {
     await client.mutation(api.matches.setScore, {
       matchId,
-      pin: REFEREE_PIN,
+      token: refToken,
       sets: [
         { a: 21, b: 15 },
         { a: 21, b: 19 },
@@ -180,7 +220,7 @@ describe("what a referee may do", () => {
   });
 
   it("resets a match it got wrong", async () => {
-    await client.mutation(api.matches.reset, { matchId, pin: REFEREE_PIN });
+    await client.mutation(api.matches.reset, { matchId, token: refToken });
     const matches = await client.query(api.matches.listByEvent, { eventId });
     expect(matches.find((m) => m._id === matchId)!.status).toBe("scheduled");
   });
@@ -188,7 +228,7 @@ describe("what a referee may do", () => {
   it("awards a walkover", async () => {
     await client.mutation(api.matches.setWalkover, {
       matchId,
-      pin: REFEREE_PIN,
+      token: refToken,
       winnerId: sideA,
     });
     const matches = await client.query(api.matches.listByEvent, { eventId });
@@ -196,26 +236,32 @@ describe("what a referee may do", () => {
     expect(played.status).toBe("walkover");
     expect(played.winnerId).toBe(sideA);
 
-    await client.mutation(api.matches.reset, { matchId, pin: REFEREE_PIN });
+    await client.mutation(api.matches.reset, { matchId, token: refToken });
   });
 });
 
 describe("what a referee may not do", () => {
   it("cannot redraw or clear the event", async () => {
     expect(
-      await rejects(client.mutation(api.draws.generate, { eventId, pin: REFEREE_PIN, randomise: true })),
-    ).toMatch(/organiser PIN/i);
-    expect(await rejects(client.mutation(api.draws.clear, { eventId, pin: REFEREE_PIN }))).toMatch(
-      /organiser PIN/i,
-    );
+      await rejects(
+        client.mutation(api.draws.generate, { eventId, token: refToken, randomise: true }),
+      ),
+    ).toMatch(/organiser/i);
+    expect(
+      await rejects(client.mutation(api.draws.clear, { eventId, token: refToken })),
+    ).toMatch(/organiser/i);
   });
 
   it("cannot touch the entry list", async () => {
     expect(
       await rejects(
-        client.mutation(api.entries.add, { eventId, pin: REFEREE_PIN, playerOne: "Gate Crasher" }),
+        client.mutation(api.entries.add, {
+          eventId,
+          token: refToken,
+          playerOne: "Gate Crasher",
+        }),
       ),
-    ).toMatch(/organiser PIN/i);
+    ).toMatch(/organiser/i);
   });
 
   it("cannot rename or publish the tournament", async () => {
@@ -223,12 +269,12 @@ describe("what a referee may not do", () => {
       await rejects(
         client.mutation(api.tournaments.update, {
           tournamentId,
-          pin: REFEREE_PIN,
+          token: refToken,
           name: "Hijacked",
           isPublic: true,
         }),
       ),
-    ).toMatch(/organiser PIN/i);
+    ).toMatch(/organiser/i);
   });
 
   it("cannot plan the order of play", async () => {
@@ -236,20 +282,20 @@ describe("what a referee may not do", () => {
       await rejects(
         client.mutation(api.schedule.generate, {
           tournamentId,
-          pin: REFEREE_PIN,
+          token: refToken,
           dayStart: "09:00",
           matchMinutes: 30,
           restMinutes: 30,
           courts: 2,
         }),
       ),
-    ).toMatch(/organiser PIN/i);
+    ).toMatch(/organiser/i);
   });
 
   it("cannot delete the tournament", async () => {
     expect(
-      await rejects(client.mutation(api.tournaments.remove, { tournamentId, pin: REFEREE_PIN })),
-    ).toMatch(/organiser PIN/i);
+      await rejects(client.mutation(api.tournaments.remove, { tournamentId, token: refToken })),
+    ).toMatch(/organiser/i);
 
     // Still there.
     const found = await client.query(api.tournaments.getBySlug, { slug });
@@ -261,26 +307,24 @@ describe("withdrawing the referee PIN", () => {
   it("stops working once the organiser clears it", async () => {
     await client.mutation(api.tournaments.setRefereePin, {
       tournamentId,
-      pin: PIN,
+      token,
       refereePin: null,
     });
 
     const found = await client.query(api.tournaments.getBySlug, { slug });
     expect(found?.hasRefereePin).toBe(false);
+    expect((await signIn(tournamentId, REFEREE_PIN, "referee")).error).toMatch(/not recognised/i);
+
+    // The token that PIN bought dies with it, so a referee already holding one
+    // cannot keep scoring after being stood down.
     expect(
-      await rejects(
-        client.mutation(api.tournaments.verifyPin, {
-          tournamentId,
-          pin: REFEREE_PIN,
-          role: "referee",
-        }),
-      ),
-    ).toMatch(/not recognised/i);
+      await rejects(client.mutation(api.matches.reset, { matchId, token: refToken })),
+    ).toMatch(/session/i);
 
     // Put it back for the tests that follow.
     await client.mutation(api.tournaments.setRefereePin, {
       tournamentId,
-      pin: PIN,
+      token,
       refereePin: REFEREE_PIN,
     });
   });
@@ -289,14 +333,14 @@ describe("withdrawing the referee PIN", () => {
     const scratch = await makeTournament("Referee PIN Rotation");
     await client.mutation(api.tournaments.setRefereePin, {
       tournamentId: scratch.tournamentId,
-      pin: PIN,
+      token: scratch.token,
       refereePin: REFEREE_PIN,
     });
 
     const newPin = "9988776655";
-    await client.mutation(api.tournaments.changePin, {
+    const rotated = await client.mutation(api.tournaments.changePin, {
       tournamentId: scratch.tournamentId,
-      pin: PIN,
+      token: scratch.token,
       newPin,
     });
 
@@ -304,18 +348,24 @@ describe("withdrawing the referee PIN", () => {
     const found = await client.query(api.tournaments.getBySlug, { slug: scratch.slug });
     expect(found?.hasRefereePin).toBe(false);
     expect(
+      (await signIn(scratch.tournamentId, REFEREE_PIN, "referee")).error,
+    ).toMatch(/not recognised/i);
+
+    // The organiser's own old token dies with the old hash too, which is why
+    // `changePin` hands back a replacement.
+    expect(
       await rejects(
-        client.mutation(api.tournaments.verifyPin, {
+        client.mutation(api.tournaments.update, {
           tournamentId: scratch.tournamentId,
-          pin: REFEREE_PIN,
-          role: "referee",
+          token: scratch.token,
+          name: "Stale session",
         }),
       ),
-    ).toMatch(/not recognised/i);
+    ).toMatch(/session/i);
 
     await client.mutation(api.tournaments.remove, {
       tournamentId: scratch.tournamentId,
-      pin: newPin,
+      token: rotated,
     });
   }, 60_000);
 });
@@ -335,61 +385,51 @@ describe("the lockout", () => {
     const scratch = await makeTournament("Referee Lockout");
     await client.mutation(api.tournaments.setRefereePin, {
       tournamentId: scratch.tournamentId,
-      pin: PIN,
+      token: scratch.token,
       refereePin: REFEREE_PIN,
     });
 
     // Four at the organiser door, three at the referee door: seven wrong
     // guesses in total, one short of the limit.
     for (let attempt = 0; attempt < 7; attempt++) {
-      const message = await rejects(
-        client.mutation(api.tournaments.verifyPin, {
-          tournamentId: scratch.tournamentId,
-          pin: WRONG_PIN,
-          role: attempt < 4 ? "organiser" : "referee",
-        }),
+      const result = await signIn(
+        scratch.tournamentId,
+        WRONG_PIN,
+        attempt < 4 ? "organiser" : "referee",
       );
-      expect(message).not.toMatch(/Try again in/i);
+      expect(result.ok).toBe(false);
+      expect(result.error).not.toMatch(/Try again in/i);
     }
 
     // The eighth tips it over, whichever door it comes through.
-    expect(
-      await rejects(
-        client.mutation(api.tournaments.verifyPin, {
-          tournamentId: scratch.tournamentId,
-          pin: WRONG_PIN,
-          role: "referee",
-        }),
-      ),
-    ).toMatch(/Too many wrong PINs/i);
+    expect((await signIn(scratch.tournamentId, WRONG_PIN, "referee")).error).toMatch(
+      /Too many wrong PINs/i,
+    );
 
     // Locked means locked: the right PIN is refused too.
-    expect(
-      await rejects(
-        client.mutation(api.tournaments.verifyPin, { tournamentId: scratch.tournamentId, pin: PIN }),
-      ),
-    ).toMatch(/Try again in/i);
+    expect((await signIn(scratch.tournamentId, PIN)).error).toMatch(/Try again in/i);
+
+    // A token minted before the lock still works. The lock guards the door, not
+    // the organiser who is already inside and may need to fix what went wrong.
+    await client.mutation(api.tournaments.update, {
+      tournamentId: scratch.tournamentId,
+      token: scratch.token,
+      name: "Locked but reachable",
+    });
   }, 120_000);
 
   it("forgives the earlier guesses once a correct PIN lands", async () => {
     for (let attempt = 0; attempt < 3; attempt++) {
-      await rejects(
-        client.mutation(api.tournaments.verifyPin, { tournamentId, pin: WRONG_PIN }),
-      );
+      expect((await signIn(tournamentId, WRONG_PIN)).ok).toBe(false);
     }
-    await expect(
-      client.mutation(api.tournaments.verifyPin, { tournamentId, pin: REFEREE_PIN, role: "referee" }),
-    ).resolves.toBeNull();
+    expect((await signIn(tournamentId, REFEREE_PIN, "referee")).ok).toBe(true);
 
     // The counter is back at zero, so seven more wrong guesses still do not lock.
     for (let attempt = 0; attempt < 7; attempt++) {
-      const message = await rejects(
-        client.mutation(api.tournaments.verifyPin, { tournamentId, pin: WRONG_PIN }),
-      );
-      expect(message).not.toMatch(/Try again in/i);
+      const result = await signIn(tournamentId, WRONG_PIN);
+      expect(result.ok).toBe(false);
+      expect(result.error).not.toMatch(/Try again in/i);
     }
-    await expect(
-      client.mutation(api.tournaments.verifyPin, { tournamentId, pin: PIN }),
-    ).resolves.toBeNull();
+    expect((await signIn(tournamentId, PIN)).ok).toBe(true);
   }, 120_000);
 });

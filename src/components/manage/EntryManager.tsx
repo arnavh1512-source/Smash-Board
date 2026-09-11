@@ -5,19 +5,28 @@ import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
 import { Alert, Badge, Button, Field, Input, Section, Textarea, cx } from "@/components/ui";
-import { errorMessage } from "@/lib/usePin";
+import { errorMessage } from "@/lib/useSession";
 import { entryName } from "@/lib/display";
 
-const BULK_HINT =
-  "One entrant per line. For doubles, separate the two names with a slash: Anita Rao / Priya Shah";
+/** The paste box explains itself differently for a pair than for one player. */
+function bulkHint(teamSize: number): string {
+  return teamSize === 2
+    ? "One pair per line, both names separated by a slash: Anita Rao / Priya Shah"
+    : "One entrant per line. This is a singles category, so a line with two names is skipped.";
+}
+
+const BULK_PLACEHOLDER: Record<number, string> = {
+  1: "Rohan Mehta\nAnita Rao\nDev Patel",
+  2: "Anita Rao / Priya Shah\nRohan Mehta / Dev Patel",
+};
 
 function AddEntryForm({
   event,
-  pin,
+  token,
   onError,
 }: {
   event: Doc<"events">;
-  pin: string;
+  token: string;
   onError: (message: string | null) => void;
 }) {
   const add = useMutation(api.entries.add);
@@ -34,7 +43,7 @@ function AddEntryForm({
     try {
       await add({
         eventId: event._id,
-        pin,
+        token,
         playerOne,
         playerTwo: event.teamSize === 2 ? playerTwo : undefined,
         club: club || undefined,
@@ -66,6 +75,7 @@ function AddEntryForm({
       {event.teamSize === 2 ? (
         <Field label="Player two">
           <Input
+            required
             maxLength={80}
             value={playerTwo}
             onChange={(e) => setPlayerTwo(e.target.value)}
@@ -99,11 +109,13 @@ function AddEntryForm({
 
 function BulkAddForm({
   eventId,
-  pin,
+  teamSize,
+  token,
   onError,
 }: {
   eventId: Id<"events">;
-  pin: string;
+  teamSize: number;
+  token: string;
   onError: (message: string | null) => void;
 }) {
   const addMany = useMutation(api.entries.addMany);
@@ -117,7 +129,7 @@ function BulkAddForm({
     setResult(null);
     setBusy(true);
     try {
-      const outcome = await addMany({ eventId, pin, text });
+      const outcome = await addMany({ eventId, token, text });
       setResult(outcome);
       if (outcome.skipped.length === 0) setText("");
     } catch (caught) {
@@ -129,11 +141,11 @@ function BulkAddForm({
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3.5">
-      <Field label="Paste a list" hint={BULK_HINT}>
+      <Field label="Paste a list" hint={bulkHint(teamSize)}>
         <Textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={"Rohan Mehta\nAnita Rao\nDev Patel"}
+          placeholder={BULK_PLACEHOLDER[teamSize] ?? BULK_PLACEHOLDER[1]}
         />
       </Field>
       {result ? (
@@ -158,12 +170,12 @@ function BulkAddForm({
 function EntryRow({
   entry,
   teamSize,
-  pin,
+  token,
   onError,
 }: {
   entry: Doc<"entries">;
   teamSize: number;
-  pin: string;
+  token: string;
   onError: (message: string | null) => void;
 }) {
   const update = useMutation(api.entries.update);
@@ -212,7 +224,7 @@ function EntryRow({
               await run(async () => {
                 await update({
                   entryId: entry._id,
-                  pin,
+                  token,
                   playerOne,
                   playerTwo: teamSize === 2 ? playerTwo : "",
                   club,
@@ -243,6 +255,11 @@ function EntryRow({
         <p className="m-0 truncate text-[14px] font-extrabold leading-tight">
           {entry.seed > 0 ? <span className="mr-1 text-[11px] opacity-50">[{entry.seed}]</span> : null}
           {entryName(entry)}
+          {teamSize === 2 && !entry.playerTwo ? (
+            <span className="ml-2">
+              <Badge tone="accent">Partner missing</Badge>
+            </span>
+          ) : null}
           {entry.withdrawn ? (
             <span className="ml-2">
               <Badge tone="outline">Withdrawn</Badge>
@@ -262,7 +279,7 @@ function EntryRow({
           className="w-16 min-h-10 px-2 py-1"
           onBlur={(e) => {
             const seed = Number(e.target.value);
-            if (seed !== entry.seed) void run(() => update({ entryId: entry._id, pin, seed }));
+            if (seed !== entry.seed) void run(() => update({ entryId: entry._id, token, seed }));
           }}
         />
       </label>
@@ -272,7 +289,7 @@ function EntryRow({
         className="min-h-10"
         onClick={async () => {
           await run(async () => {
-            setPhone((await revealContact({ entryId: entry._id, pin })) ?? "");
+            setPhone((await revealContact({ entryId: entry._id, token })) ?? "");
             setEditing(true);
           });
         }}
@@ -282,7 +299,7 @@ function EntryRow({
       <Button
         variant="ghost"
         className="min-h-10"
-        onClick={() => run(() => update({ entryId: entry._id, pin, withdrawn: !entry.withdrawn }))}
+        onClick={() => run(() => update({ entryId: entry._id, token, withdrawn: !entry.withdrawn }))}
       >
         {entry.withdrawn ? "Reinstate" : "Withdraw"}
       </Button>
@@ -291,7 +308,7 @@ function EntryRow({
         className="min-h-10 opacity-70"
         onClick={() => {
           if (!window.confirm(`Remove ${entryName(entry)} from this category?`)) return;
-          void run(() => remove({ entryId: entry._id, pin }));
+          void run(() => remove({ entryId: entry._id, token }));
         }}
       >
         Remove
@@ -304,11 +321,11 @@ function EntryRow({
 export function EntryManager({
   event,
   entries,
-  pin,
+  token,
 }: {
   event: Doc<"events">;
   entries: Doc<"entries">[];
-  pin: string;
+  token: string;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"one" | "bulk">("one");
@@ -351,9 +368,14 @@ export function EntryManager({
         ) : null}
 
         {mode === "one" ? (
-          <AddEntryForm event={event} pin={pin} onError={setError} />
+          <AddEntryForm event={event} token={token} onError={setError} />
         ) : (
-          <BulkAddForm eventId={event._id} pin={pin} onError={setError} />
+          <BulkAddForm
+            eventId={event._id}
+            teamSize={event.teamSize}
+            token={token}
+            onError={setError}
+          />
         )}
 
         {error ? <Alert kind="error">{error}</Alert> : null}
@@ -368,7 +390,7 @@ export function EntryManager({
               key={entry._id}
               entry={entry}
               teamSize={event.teamSize}
-              pin={pin}
+              token={token}
               onError={setError}
             />
           ))}

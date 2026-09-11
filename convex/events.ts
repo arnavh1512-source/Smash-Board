@@ -52,7 +52,7 @@ export const listByTournament = query({
 export const create = mutation({
   args: {
     tournamentId: v.id("tournaments"),
-    pin: v.string(),
+    token: v.string(),
     name: v.string(),
     teamSize: v.number(),
     format: formatValidator,
@@ -64,7 +64,7 @@ export const create = mutation({
   },
   returns: v.id("events"),
   handler: async (ctx, args) => {
-    await requireOrganiser(ctx, args.tournamentId, args.pin);
+    await requireOrganiser(ctx, args.tournamentId, args.token);
 
     const name = args.name.trim();
     if (name.length < 2) throw new ConvexError("Give the category a name.");
@@ -104,7 +104,7 @@ export const create = mutation({
 export const update = mutation({
   args: {
     eventId: v.id("events"),
-    pin: v.string(),
+    token: v.string(),
     name: v.optional(v.string()),
     teamSize: v.optional(v.number()),
     format: v.optional(formatValidator),
@@ -119,7 +119,7 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const event = await ctx.db.get(args.eventId);
     if (!event) throw new ConvexError("That category no longer exists.");
-    await requireOrganiser(ctx, event.tournamentId, args.pin);
+    await requireOrganiser(ctx, event.tournamentId, args.token);
 
     const patch: Record<string, unknown> = {};
     if (args.name !== undefined) {
@@ -161,12 +161,12 @@ export const update = mutation({
 });
 
 export const remove = mutation({
-  args: { eventId: v.id("events"), pin: v.string() },
+  args: { eventId: v.id("events"), token: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
     const event = await ctx.db.get(args.eventId);
     if (!event) return null;
-    await requireOrganiser(ctx, event.tournamentId, args.pin);
+    await requireOrganiser(ctx, event.tournamentId, args.token);
 
     const matches = await ctx.db
       .query("matches")

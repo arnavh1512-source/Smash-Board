@@ -9,7 +9,7 @@ import { Alert, Button, Spinner, cx } from "@/components/ui";
 import { EventPanel } from "@/components/tournament/EventPanel";
 import { ShareBar } from "@/components/tournament/ShareBar";
 import { useTournamentData } from "@/components/tournament/useTournamentData";
-import { usePin, errorMessage } from "@/lib/usePin";
+import { useSession, errorMessage } from "@/lib/useSession";
 import { scoringSummary } from "@/lib/display";
 import type { ScoringConfig } from "@/lib/scoring";
 import { PinGate } from "./PinGate";
@@ -70,11 +70,11 @@ function EventTabs({
 
 function CategoryList({
   events,
-  pin,
+  token,
   onEdit,
 }: {
   events: Doc<"events">[];
-  pin: string;
+  token: string;
   onEdit: (event: Doc<"events">) => void;
 }) {
   const remove = useMutation(api.events.remove);
@@ -112,7 +112,7 @@ function CategoryList({
                 if (!window.confirm(`Delete ${event.name} with all its entrants and scores?`)) return;
                 setError(null);
                 try {
-                  await remove({ eventId: event._id, pin });
+                  await remove({ eventId: event._id, token });
                 } catch (caught) {
                   setError(errorMessage(caught));
                 }
@@ -140,7 +140,7 @@ export function ManageConsole({
   role?: ConsoleRole;
 }) {
   const referee = role === "referee";
-  const { pin, setPin, ready } = usePin(slug, role);
+  const { token, setToken, ready } = useSession(slug, role);
   const { tournament, events, entries, matches, entryMap, loading } = useTournamentData(slug);
   const [tab, setTab] = useState<TabId>("scores");
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
@@ -162,14 +162,14 @@ export function ManageConsole({
     );
   }
 
-  if (!pin) {
+  if (!token) {
     return (
       <PinGate
         slug={slug}
         role={role}
         tournamentId={tournament._id}
         tournamentName={tournament.name}
-        onUnlock={setPin}
+        onUnlock={setToken}
       />
     );
   }
@@ -195,7 +195,7 @@ export function ManageConsole({
               View the public scoreboard
             </Link>
           </div>
-          <Button variant="ghost" className="min-h-10 text-[12px]" onClick={() => setPin(null)}>
+          <Button variant="ghost" className="min-h-10 text-[12px]" onClick={() => setToken(null)}>
             Lock
           </Button>
         </div>
@@ -238,7 +238,7 @@ export function ManageConsole({
             </Alert>
             <EventForm
               tournamentId={tournament._id}
-              pin={pin}
+              token={token}
               event={null}
               onDone={() => setShowEventForm(false)}
             />
@@ -272,7 +272,7 @@ export function ManageConsole({
           ) : null}
 
           {tab === "entrants" && activeEvent ? (
-            <EntryManager event={activeEvent} entries={eventEntries} pin={pin} />
+            <EntryManager event={activeEvent} entries={eventEntries} token={token} />
           ) : null}
 
           {tab === "draw" && activeEvent ? (
@@ -282,7 +282,7 @@ export function ManageConsole({
               matches={eventMatches}
               entries={entryMap}
               matchMinutes={matchMinutes}
-              pin={pin}
+              token={token}
             />
           ) : null}
 
@@ -291,7 +291,7 @@ export function ManageConsole({
               tournamentId={tournament._id}
               startDate={tournament.startDate}
               schedule={tournament.schedule}
-              pin={pin}
+              token={token}
               matches={matches}
               events={events}
               entries={entryMap}
@@ -303,7 +303,7 @@ export function ManageConsole({
               {showEventForm || editingEvent ? (
                 <EventForm
                   tournamentId={tournament._id}
-                  pin={pin}
+                  token={token}
                   event={editingEvent}
                   onDone={() => {
                     setShowEventForm(false);
@@ -319,7 +319,7 @@ export function ManageConsole({
               )}
               <CategoryList
                 events={events}
-                pin={pin}
+                token={token}
                 onEdit={(event) => {
                   setEditingEvent(event);
                   setShowEventForm(false);
@@ -329,7 +329,7 @@ export function ManageConsole({
           ) : null}
 
           {tab === "settings" ? (
-            <TournamentSettings tournament={tournament} pin={pin} onPinChanged={setPin} />
+            <TournamentSettings tournament={tournament} token={token} onReissued={setToken} />
           ) : null}
         </div>
       )}
@@ -339,7 +339,7 @@ export function ManageConsole({
           match={openMatch}
           event={events.find((e) => e._id === openMatch.eventId) ?? activeEvent}
           entries={entryMap}
-          pin={pin}
+          token={token}
           onClose={() => setScoringMatch(null)}
         />
       ) : null}

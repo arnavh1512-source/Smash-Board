@@ -7,7 +7,7 @@ import type { Doc } from "../../../convex/_generated/dataModel";
 import { Alert, Button, Checkbox, Section } from "@/components/ui";
 import { OrderOfPlay } from "@/components/tournament/OrderOfPlay";
 import type { EntryLookup } from "@/components/tournament/MatchRow";
-import { errorMessage } from "@/lib/usePin";
+import { errorMessage } from "@/lib/useSession";
 
 /** Generate or clear the draw for one category, and show when it is on court. */
 export function DrawPanel({
@@ -16,7 +16,7 @@ export function DrawPanel({
   matches,
   entries,
   matchMinutes,
-  pin,
+  token,
 }: {
   event: Doc<"events">;
   playingCount: number;
@@ -24,7 +24,7 @@ export function DrawPanel({
   matches: readonly Doc<"matches">[];
   entries: EntryLookup;
   matchMinutes: number;
-  pin: string;
+  token: string;
 }) {
   const generate = useMutation(api.draws.generate);
   const clear = useMutation(api.draws.clear);
@@ -78,7 +78,7 @@ export function DrawPanel({
             onClick={() =>
               run(
                 async () => {
-                  const outcome = await generate({ eventId: event._id, pin, randomise });
+                  const outcome = await generate({ eventId: event._id, token, randomise });
                   setNotice(`Draw made: ${outcome.matches} matches.`);
                 },
                 hasMatches
@@ -97,7 +97,7 @@ export function DrawPanel({
               disabled={busy}
               onClick={() =>
                 run(async () => {
-                  await clear({ eventId: event._id, pin });
+                  await clear({ eventId: event._id, token });
                   setNotice("Draw cleared.");
                 }, "Clear the draw? Every match and score in this category will be deleted.")
               }
