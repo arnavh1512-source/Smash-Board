@@ -81,9 +81,11 @@ suite runs in under a second.
 ```bash
 npm run lint          # ESLint, zero warnings tolerated
 npx tsc --noEmit      # type check
-npm test              # 123 unit tests over scoring, draws, standings, scheduling and formatting
+npm test              # 135 unit tests over scoring, draws, standings, scheduling and formatting
 npm run test:coverage # same run with a v8 coverage report (80% floor, enforced)
 npm run test:integration  # runs against a live Convex deployment; see the note below
+npm run test:e2e      # Playwright, drives the real UI against a dev server it starts itself
+npm run test:e2e:ui   # the same suite in Playwright's watch UI
 ```
 
 The integration suites talk to the deployment in `.env.local` and create their own throwaway
@@ -98,6 +100,15 @@ tournaments, so run them against a development deployment, never production.
 | `tests/schedule.test.ts` | court packing, rest between matches, the court-count cap, clock maths |
 | `tests/integration/backend.test.ts` | the tournament lifecycle against a real deployment |
 | `tests/integration/referee.test.ts` | the sign-in door, token forgery, what a referee may and may not do, the lockout |
+| `tests/e2e/home.spec.ts` | the landing page, its metadata and structured data, the theme memory, the phone layout |
+| `tests/e2e/auth.spec.ts` | the PIN gate, the eight-try lockout, a session that survives a reload, what a stranger may read |
+| `tests/e2e/organiser.spec.ts` | a category run from empty to a published result, doubles pairs, bulk entry |
+| `tests/e2e/referee.spec.ts` | an umpire scoring from their own link, and the door closing when the PIN is removed |
+| `tests/e2e/public.spec.ts` | the three public views, the shareable link, a link that points at nothing |
+
+The end-to-end suite starts its own Next dev server and drives the real browser: nothing is
+mocked, and every spec creates the tournament it needs, so the whole suite runs in parallel.
+Install the browsers once with `npx playwright install`.
 
 ## Deploying
 

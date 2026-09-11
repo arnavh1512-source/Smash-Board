@@ -30,6 +30,10 @@ const matchValidator = v.object({
   isThirdPlace: v.boolean(),
   court: v.optional(v.string()),
   scheduledAt: v.optional(v.string()),
+  // Written by the planner alongside scheduledAt. Leaving it out of the
+  // validator made every match list throw the moment an order of play was
+  // planned, taking the console and the public scoreboard down with it.
+  scheduleOffset: v.optional(v.number()),
   updatedAt: v.number(),
 });
 
