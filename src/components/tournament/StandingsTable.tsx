@@ -52,11 +52,19 @@ export function StandingsTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.entryId}>
+          {rows.map((row) => {
+            const entry = entries.get(row.entryId as Id<"entries">);
+            const withdrawn = entry?.withdrawn === true;
+            return (
+            <tr key={row.entryId} className={withdrawn ? "opacity-55" : undefined}>
               <td className="pl-0">
                 <span className="num mr-2 opacity-50">{row.rank}</span>
-                {entryName(entries.get(row.entryId as Id<"entries">))}
+                {entryName(entry)}
+                {withdrawn ? (
+                  <span className="ml-2 text-[10px] uppercase tracking-[0.08em] opacity-70">
+                    Withdrawn
+                  </span>
+                ) : null}
               </td>
               <td className="num text-right">{row.played}</td>
               <td className="num text-right font-extrabold">{row.won}</td>
@@ -68,14 +76,17 @@ export function StandingsTable({
                 {row.pointsFor}–{row.pointsAgainst}
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
       <p className="mt-2 mb-0 text-[11px] opacity-55">
         Ranked by matches won, then wins minus losses, set difference, point difference and finally
         the head-to-head result. A walkover counts as a played match — a win for one side and a
         loss for the other — but adds no sets and no points, so it never moves the difference
-        columns.
+        columns. A withdrawn entrant keeps the matches they played, so the players who beat them
+        keep those wins, but they cannot take a qualifying place — the knockout is filled from the
+        entrants who are still in the tournament.
       </p>
     </div>
   );

@@ -263,3 +263,95 @@ describe("DEFAULT_SCORING", () => {
     });
   });
 });
+
+describe("the combinations the category form can actually produce", () => {
+  /**
+   * The product lets an organiser pick any target from 1 to 99, best of 1, 3, 5
+   * or 7, and either ending. The engine is one function, so this is a
+   * representative matrix rather than every permutation: for each combination,
+   * play the shortest winning match, check the winner and the set count, and
+   * check that one set fewer is still undecided.
+   */
+  const matrix: { label: string; config: ScoringConfig }[] = [
+    { label: "11 golden, best of 5", config: { pointsPerSet: 11, bestOf: 5, endMode: "golden", cap: null } },
+    { label: "15 deuce capped at 21, best of 5", config: { pointsPerSet: 15, bestOf: 5, endMode: "deuce", cap: 21 } },
+    { label: "21 deuce capped at 30, best of 5", config: { pointsPerSet: 21, bestOf: 5, endMode: "deuce", cap: 30 } },
+    { label: "11 deuce uncapped, best of 7", config: { pointsPerSet: 11, bestOf: 7, endMode: "deuce", cap: null } },
+    { label: "17 golden, single set", config: { pointsPerSet: 17, bestOf: 1, endMode: "golden", cap: null } },
+    { label: "17 golden, best of 3", config: { pointsPerSet: 17, bestOf: 3, endMode: "golden", cap: null } },
+  ];
+
+  for (const { label, config } of matrix) {
+    it(`decides a ${label} match on the last set it is allowed`, () => {
+      const needed = setsToWin(config);
+      expect(needed).toBe((config.bestOf + 1) / 2);
+
+      const set = { a: config.pointsPerSet, b: Math.max(0, config.pointsPerSet - 2) };
+      const winning = Array.from({ length: needed }, () => ({ ...set }));
+
+      const outcome = evaluateMatch(winning, config);
+      expect(outcome.winner).toBe("a");
+      expect(outcome.setsWon).toEqual({ a: needed, b: 0 });
+      expect(outcome.points.a).toBe(set.a * needed);
+
+      // One set short of the target is a match still being played, not a win.
+      if (needed > 1) {
+        const short = evaluateMatch(winning.slice(0, needed - 1), config);
+        expect(short.winner).toBeNull();
+        expect(short.complete).toBe(false);
+      }
+    });
+
+    it(`refuses a ${label} match that runs past its decider`, () => {
+      const needed = setsToWin(config);
+      const set = { a: config.pointsPerSet, b: Math.max(0, config.pointsPerSet - 2) };
+      const tooMany = Array.from({ length: needed + 1 }, () => ({ ...set }));
+      expect(() => evaluateMatch(tooMany, config)).toThrow(ScoringError);
+    });
+
+    it(`plays a ${label} match out point by point to the same answer`, () => {
+      let sets: { a: number; b: number }[] = [];
+      for (let guard = 0; guard < 1_000; guard += 1) {
+        if (evaluateMatch(sets, config).complete) break;
+        sets = addPoint(sets, "a", config);
+      }
+      const outcome = evaluateMatch(sets, config);
+      expect(outcome.winner).toBe("a");
+      expect(outcome.setsWon.a).toBe(setsToWin(config));
+      expect(() => addPoint(sets, "a", config)).toThrow(ScoringError);
+    });
+  }
+
+  it("takes a five-set best of five the distance", () => {
+    const config: ScoringConfig = { pointsPerSet: 15, bestOf: 5, endMode: "golden", cap: null };
+    const a = { a: 15, b: 13 };
+    const b = { a: 13, b: 15 };
+    const outcome = evaluateMatch([a, b, a, b, a], config);
+    expect(outcome.winner).toBe("a");
+    expect(outcome.setsWon).toEqual({ a: 3, b: 2 });
+    expect(outcome.points).toEqual({ a: 71, b: 69 });
+  });
+
+  it("takes a seven-set best of seven the distance", () => {
+    const config: ScoringConfig = { pointsPerSet: 11, bestOf: 7, endMode: "deuce", cap: null };
+    const a = { a: 11, b: 9 };
+    const b = { a: 9, b: 11 };
+    const outcome = evaluateMatch([a, b, a, b, a, b, a], config);
+    expect(outcome.winner).toBe("a");
+    expect(outcome.setsWon).toEqual({ a: 4, b: 3 });
+  });
+
+  it("holds a deuce set open past its target and closes it on the cap", () => {
+    const config: ScoringConfig = { pointsPerSet: 15, bestOf: 5, endMode: "deuce", cap: 21 };
+    expect(setWinner({ a: 15, b: 14 }, config)).toBeNull();
+    expect(setWinner({ a: 16, b: 14 }, config)).toBe("a");
+    expect(setWinner({ a: 21, b: 20 }, config)).toBe("a");
+    expect(() => evaluateMatch([{ a: 22, b: 20 }], config)).toThrow(ScoringError);
+  });
+
+  it("ends a golden set on the target with no run-on", () => {
+    const config: ScoringConfig = { pointsPerSet: 17, bestOf: 3, endMode: "golden", cap: null };
+    expect(setWinner({ a: 17, b: 16 }, config)).toBe("a");
+    expect(() => evaluateMatch([{ a: 18, b: 16 }], config)).toThrow(ScoringError);
+  });
+});

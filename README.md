@@ -40,6 +40,11 @@ has not happened yet and throwing away something that has.
 - **A walkover counts as a played match** — a win for one side, a loss for the other — but brings
   no sets and no points with it, so it never moves the set-difference or point-difference columns
   of a group table. That rule is printed under every standings table.
+- **A withdrawn entrant keeps their results but loses their place.** Somebody who plays two
+  group matches and then pulls out keeps those matches, so the players who beat them keep their
+  wins and the table still shows how the group actually went. Their remaining matches become
+  walkovers, and they drop below every entrant who is still in the tournament, so a qualifying
+  place always goes to somebody who can turn up and play it.
 - **The organiser's phone number is private unless it is published.** A tick box on the
   tournament form decides whether the number travels with the public page; without it the number
   stays on the server and only the console can read it back, behind the PIN.
@@ -102,7 +107,7 @@ suite runs in under a second.
 ```bash
 npm run lint          # ESLint, zero warnings tolerated
 npx tsc --noEmit      # type check
-npm test              # 135 unit tests over scoring, draws, standings, scheduling and formatting
+npm test              # 187 unit tests over scoring, draws, standings, scheduling and formatting
 npm run test:coverage # same run with a v8 coverage report (80% floor, enforced)
 npm run test:integration  # runs against a live Convex deployment; see the note below
 npm run test:e2e      # Playwright, drives the real UI against a dev server it starts itself
@@ -119,8 +124,12 @@ tournaments, so run them against a development deployment, never production.
 | `tests/standings.test.ts` | the BWF tiebreak chain, walkovers, scores that no longer parse |
 | `tests/display.test.ts` | entrant names, scoring summaries, match ordering |
 | `tests/schedule.test.ts` | court packing, rest between matches, the court-count cap, clock maths |
+| `tests/scheduleStress.test.ts` | a whole day: three categories, two courts, byes, a group stage, a third-place match, players in two draws |
+| `tests/roundScoring.test.ts` | the semi-final and final scoring overrides |
 | `tests/integration/backend.test.ts` | the tournament lifecycle against a real deployment |
 | `tests/integration/referee.test.ts` | the sign-in door, token forgery, what a referee may and may not do, the lockout |
+| `tests/integration/scenarios.test.ts` | a 20-entrant knockout and a 16-entrant group stage played end to end, plus the guards above |
+| `tests/integration/withdrawal.test.ts` | a player who wins two group matches and then pulls out, and the knockout that has to fill without them |
 | `tests/e2e/home.spec.ts` | the landing page, its metadata and structured data, the theme memory, the phone layout |
 | `tests/e2e/auth.spec.ts` | the PIN gate, the eight-try lockout, a session that survives a reload, what a stranger may read |
 | `tests/e2e/organiser.spec.ts` | a category run from empty to a published result, doubles pairs, bulk entry |

@@ -6,6 +6,7 @@ import {
   ScheduleError,
   courtName,
   parseClockTime,
+  personKey,
   planSchedule,
   toClockTime,
   type PlannerMatch,
@@ -100,6 +101,21 @@ export const generate = mutation({
       throw new ConvexError("Generate a draw first — there is nothing to schedule yet.");
     }
 
+    const entries = await ctx.db
+      .query("entries")
+      .withIndex("by_tournament", (q) => q.eq("tournamentId", args.tournamentId))
+      .collect();
+    // One entry can hold two people, and one person can hold several entries
+    // across the categories. The planner owes its rest to the people.
+    const peopleOf = new Map<Id<"entries">, string[]>(
+      entries.map((entry) => [
+        entry._id,
+        [entry.playerOne, entry.playerTwo]
+          .filter((name): name is string => typeof name === "string" && name.trim() !== "")
+          .map(personKey),
+      ]),
+    );
+
     const orderOf = new Map(events.map((event) => [event._id, event.order] as const));
     const byEvent = new Map<Id<"events">, Doc<"matches">[]>();
     for (const match of matches) {
@@ -111,7 +127,9 @@ export const generate = mutation({
     const planner: PlannerMatch[] = matches.map((match) => {
       const eventMatches = byEvent.get(match.eventId) ?? [];
       const groupMatchIds = eventMatches.filter((m) => m.stage === "group").map((m) => m._id);
-      const sides = [match.aId, match.bId].filter((id): id is Id<"entries"> => id !== null);
+      const sides = [match.aId, match.bId]
+        .filter((id): id is Id<"entries"> => id !== null)
+        .flatMap((id) => peopleOf.get(id) ?? [id as string]);
       return {
         id: match._id,
         eventId: match.eventId,

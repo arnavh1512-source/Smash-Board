@@ -320,6 +320,13 @@ export async function fillKnockoutFromGroups(
     .collect();
   const nameOf = (id: string) => entryName(entries.find((e) => e._id === id));
 
+  // A qualification place is for somebody who is still in the tournament. An
+  // entrant who played a group match and then pulled out keeps those results —
+  // the players who beat them keep their wins, and the table still shows how
+  // the group actually went — but they drop below everyone still standing, so
+  // the places that feed the knockout go to entrants who can play them.
+  const withdrawn = new Set(entries.filter((e) => e.withdrawn).map((e) => e._id as string));
+
   const groupIndexes = [...new Set(groupMatches.map((m) => m.groupIndex ?? 0))].sort(
     (a, b) => a - b,
   );
@@ -345,10 +352,11 @@ export async function fillKnockoutFromGroups(
       event.scoring as ScoringConfig,
       nameOf,
     );
-    placings.set(
-      groupIndex,
-      table.map((row) => row.entryId),
-    );
+    const order = table.map((row) => row.entryId);
+    placings.set(groupIndex, [
+      ...order.filter((id) => !withdrawn.has(id)),
+      ...order.filter((id) => withdrawn.has(id)),
+    ]);
   }
 
   const knockout = await knockoutMatches(ctx, event._id);
@@ -388,6 +396,21 @@ export async function fillKnockoutFromGroups(
     await ctx.db.patch(match._id, { ...patch, updatedAt: Date.now() });
     await advanceKnockout(ctx, { ...match, ...patch } as Doc<"matches">, null);
     filled = true;
+  }
+
+  // Only reachable when a group lost more entrants than it has places to spare,
+  // so even after the demotion a qualifying slot landed on somebody who has
+  // withdrawn. The slot is emptied like any other withdrawal and their opponent
+  // is given the walkover; nobody is left facing a name that will not arrive.
+  for (const match of firstRound) {
+    const fresh = await ctx.db.get(match._id);
+    if (!fresh) continue;
+    for (const side of ["a", "b"] as const) {
+      const id = side === "a" ? fresh.aId : fresh.bId;
+      if (id === null || !withdrawn.has(id)) continue;
+      await vacateSide(ctx, fresh._id, side);
+      filled = true;
+    }
   }
 
   if (filled) await resolveWalkovers(ctx, event._id);

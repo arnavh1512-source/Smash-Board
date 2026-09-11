@@ -65,6 +65,19 @@ export const DEFAULT_SCHEDULE: ScheduleOptions & { dayStart: string } = {
 
 export class ScheduleError extends Error {}
 
+/**
+ * The key a person is tracked by while the day is planned.
+ *
+ * Rest is owed to a human being, not to an entry. The same player can be in the
+ * singles and the doubles, which are two separate entries with two separate
+ * ids, so the planner is fed names rather than entry ids — otherwise a player
+ * could be put on two courts at the same minute, or sent straight from one
+ * match into the next.
+ */
+export function personKey(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function assertOptions(options: ScheduleOptions): void {
   if (!Number.isFinite(options.matchMinutes) || options.matchMinutes < 5 || options.matchMinutes > 240) {
     throw new ScheduleError("A match slot must be between 5 and 240 minutes.");
