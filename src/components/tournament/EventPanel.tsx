@@ -32,6 +32,10 @@ export function EventPanel({
   const groupMatches = matches.filter((m) => m.stage === "group");
   const knockoutMatches = matches.filter((m) => m.stage === "knockout");
   const scoring = event.scoring as ScoringConfig;
+  // The closing rounds may be played to their own rules, so the header says so
+  // rather than leaving a spectator to work it out from the score.
+  const semiFinalScoring = (event.semiFinalScoring as ScoringConfig | null | undefined) ?? null;
+  const finalScoring = (event.finalScoring as ScoringConfig | null | undefined) ?? null;
 
   if (matches.length === 0) {
     return (
@@ -48,6 +52,8 @@ export function EventPanel({
       <p className="m-0 px-4 py-2.5 text-[11px] tracking-[0.04em] opacity-60">
         {FORMAT_LABELS[event.format] ?? event.format} · {entrants} entrants ·{" "}
         {scoringSummary(scoring)}
+        {semiFinalScoring ? ` · Semi-finals ${scoringSummary(semiFinalScoring)}` : ""}
+        {finalScoring ? ` · Final ${scoringSummary(finalScoring)}` : ""}
       </p>
 
       {groupIndexes.map((groupIndex) => {

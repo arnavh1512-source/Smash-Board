@@ -17,6 +17,9 @@ interface Draft {
   teamSize: number;
   format: Format;
   scoring: ScoringConfig;
+  /** null means the closing round is played to the category's own rules. */
+  semiFinalScoring: ScoringConfig | null;
+  finalScoring: ScoringConfig | null;
   thirdPlace: boolean;
   groupCount: number;
   advancePerGroup: number;
@@ -30,6 +33,8 @@ function draftFrom(event: Doc<"events"> | null): Draft {
       teamSize: 1,
       format: "knockout",
       scoring: { ...DEFAULT_SCORING },
+      semiFinalScoring: null,
+      finalScoring: null,
       thirdPlace: false,
       groupCount: 2,
       advancePerGroup: 2,
@@ -41,6 +46,8 @@ function draftFrom(event: Doc<"events"> | null): Draft {
     teamSize: event.teamSize,
     format: event.format,
     scoring: event.scoring as ScoringConfig,
+    semiFinalScoring: (event.semiFinalScoring as ScoringConfig | null | undefined) ?? null,
+    finalScoring: (event.finalScoring as ScoringConfig | null | undefined) ?? null,
     thirdPlace: event.thirdPlace,
     groupCount: event.groupCount,
     advancePerGroup: event.advancePerGroup,
@@ -88,6 +95,11 @@ export function EventForm({
   const usesRoundRobin = draft.format === "round_robin" || usesGroups;
   const usesKnockout = draft.format !== "round_robin";
 
+  // Once the draw exists the rules it was built from are fixed, and the server
+  // refuses to change them. The form says so rather than letting the organiser
+  // type into a field whose value will be rejected on save.
+  const locked = Boolean(event?.drawGeneratedAt);
+
   return (
     <Section>
       <h6 className="m-0">{event ? `Edit ${event.name}` : "Add a category"}</h6>
@@ -107,6 +119,7 @@ export function EventForm({
 
           <Field label="Singles or doubles">
             <Select
+              disabled={locked}
               value={draft.teamSize}
               onChange={(e) => setDraft({ ...draft, teamSize: Number(e.target.value) })}
             >
@@ -125,6 +138,7 @@ export function EventForm({
 
         <Field label="Draw format">
           <Select
+            disabled={locked}
             value={draft.format}
             onChange={(e) => setDraft({ ...draft, format: e.target.value as Format })}
           >
@@ -136,14 +150,56 @@ export function EventForm({
 
         <ScoringFields
           value={draft.scoring}
+          disabled={locked}
           onChange={(scoring) => setDraft({ ...draft, scoring })}
         />
+
+        {usesKnockout ? (
+          <div className="flex flex-col gap-3.5">
+            <Checkbox
+              checked={draft.semiFinalScoring !== null}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  semiFinalScoring: e.target.checked ? { ...draft.scoring } : null,
+                })
+              }
+              label="Play the semi-finals to different rules"
+            />
+            {draft.semiFinalScoring ? (
+              <ScoringFields
+                label="Semi-final scoring"
+                value={draft.semiFinalScoring}
+                onChange={(semiFinalScoring) => setDraft({ ...draft, semiFinalScoring })}
+              />
+            ) : null}
+
+            <Checkbox
+              checked={draft.finalScoring !== null}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  finalScoring: e.target.checked ? { ...draft.scoring } : null,
+                })
+              }
+              label="Play the final to different rules"
+            />
+            {draft.finalScoring ? (
+              <ScoringFields
+                label="Final scoring"
+                value={draft.finalScoring}
+                onChange={(finalScoring) => setDraft({ ...draft, finalScoring })}
+              />
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="grid gap-3.5 sm:grid-cols-2">
           {usesGroups ? (
             <>
               <Field label="Number of groups">
                 <Input
+                  disabled={locked}
                   type="number"
                   min={1}
                   max={32}
@@ -153,6 +209,7 @@ export function EventForm({
               </Field>
               <Field label="Qualify from each group">
                 <Input
+                  disabled={locked}
                   type="number"
                   min={1}
                   max={8}
@@ -167,6 +224,7 @@ export function EventForm({
         <div className="flex flex-col gap-1">
           {usesRoundRobin ? (
             <Checkbox
+              disabled={locked}
               checked={draft.doubleRound}
               onChange={(e) => setDraft({ ...draft, doubleRound: e.target.checked })}
               label="Play every pairing twice (home and away)"
@@ -175,6 +233,7 @@ export function EventForm({
 
           {usesKnockout ? (
             <Checkbox
+              disabled={locked}
               checked={draft.thirdPlace}
               onChange={(e) => setDraft({ ...draft, thirdPlace: e.target.checked })}
               label="Add a third-place playoff"
@@ -182,10 +241,12 @@ export function EventForm({
           ) : null}
         </div>
 
-        {event?.drawGeneratedAt ? (
+        {locked ? (
           <Alert kind="info">
-            The draw is already made. Changing the format or the group settings only takes effect
-            when you generate the draw again.
+            The draw for this category has already been made, so the format, the scoring and the
+            group settings are locked — changing them now would invalidate matches that have
+            already been played. Clear the draw to change them. The semi-final and final rules can
+            still be changed, up until those rounds are played.
           </Alert>
         ) : null}
 

@@ -11,13 +11,16 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { computeStandings } from "../../src/lib/standings";
 import { entryName } from "../../src/lib/display";
-import { knockoutFeed, knockoutRoundName } from "../../src/lib/draw";
-import { evaluateMatch, type ScoringConfig } from "../../src/lib/scoring";
+import { countKnockoutRounds, knockoutFeed, knockoutRoundName } from "../../src/lib/draw";
+import {
+  evaluateMatch,
+  scoringForRound,
+  type RoundScoring,
+  type ScoringConfig,
+} from "../../src/lib/scoring";
 
 export function totalKnockoutRounds(matches: Doc<"matches">[]): number {
-  const knockout = matches.filter((m) => m.stage === "knockout" && !m.isThirdPlace);
-  if (knockout.length === 0) return 0;
-  return Math.max(...knockout.map((m) => m.round)) + 1;
+  return countKnockoutRounds(matches);
 }
 
 async function knockoutMatches(ctx: MutationCtx, eventId: Id<"events">) {
@@ -29,6 +32,46 @@ async function knockoutMatches(ctx: MutationCtx, eventId: Id<"events">) {
 
 /** How a group qualifier slot is labelled at draw time, e.g. "1st in Group A". */
 const QUALIFIER_LABEL = /^\d+(?:st|nd|rd|th) in Group [A-Z]+$/;
+
+/** Label on a side nobody will ever fill because the entrant pulled out. */
+export const WITHDRAWN_LABEL = "Withdrawn";
+
+/** Label on a side left empty by the draw itself. */
+const BYE_LABEL = "BYE";
+
+/**
+ * Is this side permanently empty?
+ *
+ * An empty side is not the same as an undecided one. "Winner of Semi-final 1"
+ * and "1st in Group A" are slots waiting for somebody; "BYE" and "Withdrawn"
+ * are slots nobody is coming to. Only the second kind hands the opponent a
+ * walkover, which is why the label has to be read and not just the missing id.
+ */
+function isVacant(id: Id<"entries"> | null, label: string | null): boolean {
+  return id === null && (label === BYE_LABEL || label === WITHDRAWN_LABEL);
+}
+
+/** A match nobody can still play or change. */
+function isSettled(status: string): boolean {
+  return status === "completed" || status === "walkover" || status === "cancelled";
+}
+
+/**
+ * The rules one match is played under, given the category's optional overrides
+ * for the semi-finals and the final. Reads the draw only when an override is
+ * actually set, so the common case costs no extra query.
+ */
+export async function scoringForMatch(
+  ctx: MutationCtx,
+  event: Doc<"events">,
+  match: Pick<Doc<"matches">, "stage" | "round" | "isThirdPlace">,
+): Promise<ScoringConfig> {
+  const base = event.scoring as ScoringConfig;
+  if (match.stage !== "knockout") return base;
+  if (!event.semiFinalScoring && !event.finalScoring) return base;
+  const all = await knockoutMatches(ctx, event._id);
+  return scoringForRound(event as RoundScoring, match, totalKnockoutRounds(all));
+}
 
 /**
  * Push the winner of one knockout match into the next round, and the loser
@@ -51,11 +94,21 @@ export async function advanceKnockout(
     const playoff = all.find((m) => m.isThirdPlace);
     if (playoff) {
       const side = match.slot === 0 ? "a" : "b";
-      await ctx.db.patch(playoff._id, {
+      const patch: Record<string, unknown> = {
         [`${side}Id`]: loserId,
         [`${side}Label`]: loserId ? null : `Loser of Semi-final ${match.slot + 1}`,
         updatedAt: Date.now(),
-      });
+      };
+      // A different loser means a different bronze match. Keeping the old score
+      // would credit the new arrival with a result they never played, so the
+      // playoff goes back to being unplayed - exactly as the next round does.
+      const currentLoser = side === "a" ? playoff.aId : playoff.bId;
+      if (currentLoser !== loserId && (playoff.sets.length > 0 || playoff.winnerId)) {
+        patch.sets = [];
+        patch.winnerId = null;
+        patch.status = "scheduled";
+      }
+      await ctx.db.patch(playoff._id, patch);
     }
   }
 
@@ -94,24 +147,152 @@ export async function advanceKnockout(
 }
 
 /**
- * Resolve first-round byes: a match with exactly one entrant is marked as a
- * walkover and its entrant moves straight into the next round.
+ * Empty one side of a match, because whoever was going to arrive there never
+ * will. Any result already played under the old pairing is cleared, and the
+ * change is rippled forward so no later round keeps a stale name.
+ *
+ * The match is re-read rather than taken from a caller's snapshot: a single
+ * pass can touch the same match twice, and the second touch has to see the
+ * first one's writes.
  */
-export async function resolveByes(ctx: MutationCtx, eventId: Id<"events">): Promise<void> {
-  const all = await knockoutMatches(ctx, eventId);
-  for (const match of all) {
-    if (match.round !== 0 || match.status !== "scheduled") continue;
-    const hasA = match.aId !== null;
-    const hasB = match.bId !== null;
-    if (hasA === hasB) continue;
-    const winnerId = (hasA ? match.aId : match.bId) as Id<"entries">;
-    await ctx.db.patch(match._id, {
-      status: "walkover",
-      winnerId,
-      updatedAt: Date.now(),
-    });
-    await advanceKnockout(ctx, { ...match, winnerId }, winnerId);
+async function vacateSide(
+  ctx: MutationCtx,
+  matchId: Id<"matches">,
+  side: "a" | "b",
+): Promise<void> {
+  const target = await ctx.db.get(matchId);
+  if (!target) return;
+
+  const patch: Record<string, unknown> = {
+    [`${side}Id`]: null,
+    [`${side}Label`]: WITHDRAWN_LABEL,
+    updatedAt: Date.now(),
+  };
+  const hadResult = target.sets.length > 0 || target.winnerId !== null;
+  if (hadResult || target.status !== "scheduled") {
+    patch.sets = [];
+    patch.winnerId = null;
+    patch.status = "scheduled";
   }
+  await ctx.db.patch(matchId, patch);
+  if (hadResult) {
+    await advanceKnockout(ctx, { ...target, ...(patch as object) } as Doc<"matches">, null);
+  }
+}
+
+/**
+ * A match nobody can play still has to say something to the rounds after it,
+ * otherwise the next slot waits forever on a winner that will never exist.
+ * Pushing the vacancy forward lets the opponent there resolve on the next pass.
+ */
+async function propagateCancellation(ctx: MutationCtx, match: Doc<"matches">): Promise<void> {
+  if (match.stage !== "knockout" || match.isThirdPlace) return;
+
+  const all = await knockoutMatches(ctx, match.eventId);
+  const totalRounds = totalKnockoutRounds(all);
+
+  if (match.round === totalRounds - 2) {
+    const playoff = all.find((m) => m.isThirdPlace);
+    if (playoff) await vacateSide(ctx, playoff._id, match.slot === 0 ? "a" : "b");
+  }
+
+  const feed = knockoutFeed(match.round, match.slot, totalRounds);
+  if (!feed) return;
+  const next = all.find(
+    (m) => !m.isThirdPlace && m.round === feed.round && m.slot === feed.slot,
+  );
+  if (next) await vacateSide(ctx, next._id, feed.side);
+}
+
+/** Safety net on the fixed-point loop below; a real draw settles in far fewer. */
+const MAX_RESOLVE_PASSES = 16;
+
+/**
+ * Award every match that cannot be played.
+ *
+ * A side is only ever empty for one of two reasons: the draw left it empty (a
+ * bye) or the entrant pulled out. Either way the opponent wins without playing,
+ * and that walkover fills a slot in the next round, which may itself turn out to
+ * be unplayable. So this runs to a fixed point, re-reading the matches each pass
+ * because every patch invalidates the previous snapshot.
+ *
+ * Both sides empty is not a walkover at all — there is nobody to award it to —
+ * so the match becomes a no contest and the vacancy travels onward instead.
+ */
+export async function resolveWalkovers(
+  ctx: MutationCtx,
+  eventId: Id<"events">,
+): Promise<void> {
+  for (let pass = 0; pass < MAX_RESOLVE_PASSES; pass++) {
+    const all = await ctx.db
+      .query("matches")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+
+    let changed = false;
+    for (const match of all) {
+      // A match with a score on it is history, whatever its sides now say.
+      if (match.status !== "scheduled" || match.sets.length > 0) continue;
+
+      const aVacant = isVacant(match.aId, match.aLabel);
+      const bVacant = isVacant(match.bId, match.bLabel);
+      if (!aVacant && !bVacant) continue;
+
+      if (aVacant && bVacant) {
+        await ctx.db.patch(match._id, {
+          status: "cancelled",
+          winnerId: null,
+          updatedAt: Date.now(),
+        });
+        await propagateCancellation(ctx, match);
+        changed = true;
+        continue;
+      }
+
+      // The other side may still be waiting on an earlier round; there is no
+      // winner to award yet, so leave it for a later pass.
+      const winnerId = aVacant ? match.bId : match.aId;
+      if (winnerId === null) continue;
+
+      await ctx.db.patch(match._id, {
+        status: "walkover",
+        winnerId,
+        updatedAt: Date.now(),
+      });
+      await advanceKnockout(ctx, { ...match, winnerId }, winnerId);
+      changed = true;
+    }
+
+    if (!changed) return;
+  }
+}
+
+/**
+ * Take an entrant out of a draw that has already been made.
+ *
+ * Matches they have already played stay exactly as they are: the results are
+ * part of the tournament's record and the players who beat them keep their
+ * wins. Everything still to come loses them, and is then resolved through the
+ * ordinary walkover machinery so their opponents advance properly instead of
+ * being left facing an empty slot.
+ */
+export async function applyWithdrawal(
+  ctx: MutationCtx,
+  entry: Doc<"entries">,
+): Promise<void> {
+  const matches = await ctx.db
+    .query("matches")
+    .withIndex("by_event", (q) => q.eq("eventId", entry.eventId))
+    .collect();
+
+  for (const match of matches) {
+    if (isSettled(match.status)) continue;
+    const side = match.aId === entry._id ? "a" : match.bId === entry._id ? "b" : null;
+    if (!side) continue;
+    await vacateSide(ctx, match._id, side);
+  }
+
+  await resolveWalkovers(ctx, entry.eventId);
 }
 
 /**
@@ -129,10 +310,9 @@ export async function fillKnockoutFromGroups(
     .collect();
   if (groupMatches.length === 0) return false;
 
-  const unfinished = groupMatches.some(
-    (m) => m.status !== "completed" && m.status !== "walkover",
-  );
-  if (unfinished) return false;
+  // A cancelled group match counts as finished: nobody can ever play it, so
+  // waiting for it would stall the knockout forever.
+  if (groupMatches.some((m) => !isSettled(m.status))) return false;
 
   const entries = await ctx.db
     .query("entries")
@@ -210,7 +390,7 @@ export async function fillKnockoutFromGroups(
     filled = true;
   }
 
-  if (filled) await resolveByes(ctx, event._id);
+  if (filled) await resolveWalkovers(ctx, event._id);
   return filled;
 }
 

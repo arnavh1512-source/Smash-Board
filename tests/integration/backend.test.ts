@@ -208,7 +208,7 @@ describe("draw and scoring", () => {
     expect(after.find((m) => m.isThirdPlace)!.aId).toBeNull();
   });
 
-  it("clears a deleted entrant out of every round they reached", async () => {
+  it("takes a withdrawn entrant out of every round still to come", async () => {
     const matches = await client.query(api.matches.listByEvent, { eventId });
     const semi = matches.find((m) => m.round === 0 && !m.isThirdPlace)!;
     await client.mutation(api.matches.setScore, {
@@ -220,14 +220,26 @@ describe("draw and scoring", () => {
       ],
     });
 
-    await client.mutation(api.entries.remove, {
+    // Deleting them outright would leave "beat Withdrawn 21-15" on the record,
+    // so once the draw exists the only way out is a withdrawal.
+    const refusal = await rejects(
+      client.mutation(api.entries.remove, { entryId: semi.aId as Id<"entries">, token }),
+    );
+    expect(refusal).toMatch(/withdraw/i);
+
+    await client.mutation(api.entries.update, {
       entryId: semi.aId as Id<"entries">,
       token,
+      withdrawn: true,
     });
 
     const after = await client.query(api.matches.listByEvent, { eventId });
-    const ids = after.flatMap((m) => [m.aId, m.bId, m.winnerId]);
-    expect(ids).not.toContain(semi.aId);
+    const final = after.find((m) => m.round === 1 && !m.isThirdPlace)!;
+    expect(final.aId).toBeNull();
+    expect(final.aLabel).toBe("Withdrawn");
+    // The match they actually played keeps its result; only what is still to
+    // come is handed over.
+    expect(after.find((m) => m._id === semi._id)!.winnerId).toBe(semi.aId);
   });
 });
 

@@ -29,6 +29,9 @@ export interface DraftMatch {
   isThirdPlace: boolean;
 }
 
+/** A draw that cannot be built, with a message the organiser can act on. */
+export class DrawError extends Error {}
+
 export interface KnockoutOptions {
   /** Add a third-place playoff fed by the two semi-final losers. */
   thirdPlace: boolean;
@@ -144,6 +147,20 @@ export function generateKnockout(entries: EntryId[], options: KnockoutOptions): 
 }
 
 /**
+ * How many rounds the knockout part of a draw runs to.
+ *
+ * The third-place playoff shares the final's round number, so it is left out of
+ * the count rather than being allowed to extend it.
+ */
+export function countKnockoutRounds(
+  matches: { stage: string; round: number; isThirdPlace: boolean }[],
+): number {
+  const knockout = matches.filter((m) => m.stage === "knockout" && !m.isThirdPlace);
+  if (knockout.length === 0) return 0;
+  return Math.max(...knockout.map((m) => m.round)) + 1;
+}
+
+/**
  * Where the winner of a knockout match goes next.
  * Returns null for the final and for the third-place playoff.
  */
@@ -228,6 +245,39 @@ export interface GroupsKnockoutOptions {
 }
 
 /**
+ * Check that a group configuration can actually produce a tournament.
+ *
+ * Asking four groups to send two entrants each into a knockout needs eight
+ * entrants; with six entered, two knockout slots could never be filled and the
+ * draw would stall forever waiting on qualifiers that do not exist. The rule
+ * lives here, in the pure generator, so every caller is covered — the Convex
+ * mutation checks it too, but only so the organiser gets the message early.
+ */
+export function validateGroupsKnockout(
+  entryCount: number,
+  options: Pick<GroupsKnockoutOptions, "groupCount" | "advancePerGroup">,
+): void {
+  const { groupCount, advancePerGroup } = options;
+  if (!Number.isInteger(groupCount) || groupCount < 1) {
+    throw new DrawError("A group stage needs at least one group.");
+  }
+  if (!Number.isInteger(advancePerGroup) || advancePerGroup < 1) {
+    throw new DrawError("At least one entrant has to advance from each group.");
+  }
+  if (groupCount > entryCount) {
+    throw new DrawError(
+      `There are fewer entrants than groups: ${groupCount} groups need at least ${groupCount} entrants, and ${entryCount} are entered.`,
+    );
+  }
+  const qualifiers = groupCount * advancePerGroup;
+  if (qualifiers > entryCount) {
+    throw new DrawError(
+      `${groupCount} groups advancing ${advancePerGroup} each needs ${qualifiers} entrants, and ${entryCount} are entered. Reduce the groups, reduce how many advance, or add entrants.`,
+    );
+  }
+}
+
+/**
  * Group stage followed by a knockout. The knockout slots start empty and are
  * filled once each group has finished, using the group standings.
  */
@@ -235,6 +285,7 @@ export function generateGroupsKnockout(
   entries: EntryId[],
   options: GroupsKnockoutOptions,
 ): DraftMatch[] {
+  validateGroupsKnockout(entries.length, options);
   const groups = splitIntoGroups(entries, options.groupCount);
   const matches: DraftMatch[] = [];
 

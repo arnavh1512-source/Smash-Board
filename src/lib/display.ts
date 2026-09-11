@@ -46,5 +46,6 @@ export const STATUS_LABELS: Record<string, string> = {
   live: "On court",
   completed: "Finished",
   walkover: "Walkover",
+  cancelled: "No contest",
 };
 

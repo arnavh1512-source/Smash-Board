@@ -210,3 +210,87 @@ describe("computeStandings", () => {
     expect(rows.map((row) => row.rank)).toEqual([1, 2, 3, 4]);
   });
 });
+
+describe("multi-way ties", () => {
+  // A beat B, B beat C, C beat A. A flat pairwise head-to-head cannot order
+  // this; the BWF answer is a mini-table across the tied three alone.
+  const cycle = [
+    played("a", "b", [{ a: 21, b: 10 }, { a: 21, b: 10 }]),
+    played("b", "c", [{ a: 21, b: 19 }, { a: 21, b: 19 }]),
+    played("c", "a", [{ a: 21, b: 5 }, { a: 21, b: 5 }]),
+  ];
+
+  it("breaks a three-way tie on the results among the tied entrants", () => {
+    const rows = computeStandings(
+      ["a", "b", "c", "d"],
+      [
+        ...cycle,
+        played("a", "d", [{ a: 21, b: 0 }, { a: 21, b: 0 }]),
+        played("b", "d", [{ a: 21, b: 0 }, { a: 21, b: 0 }]),
+        played("c", "d", [{ a: 21, b: 0 }, { a: 21, b: 0 }]),
+      ],
+      config,
+      nameOf,
+    );
+    // Inside the cycle every record is 1-1 with a level set difference, so the
+    // point difference decides: c +28, a -10, b -18.
+    expect(order(rows)).toEqual(["c", "a", "b", "d"]);
+  });
+
+  it("keeps the full record on screen, not the mini-table's", () => {
+    const rows = computeStandings(
+      ["a", "b", "c", "d"],
+      [
+        ...cycle,
+        played("a", "d", [{ a: 21, b: 0 }, { a: 21, b: 0 }]),
+        played("b", "d", [{ a: 21, b: 0 }, { a: 21, b: 0 }]),
+        played("c", "d", [{ a: 21, b: 0 }, { a: 21, b: 0 }]),
+      ],
+      config,
+      nameOf,
+    );
+    for (const id of ["a", "b", "c"]) {
+      expect(rows.find((row) => row.entryId === id)).toMatchObject({
+        played: 3,
+        won: 2,
+        lost: 1,
+      });
+    }
+  });
+
+  it("falls back to name order for a cycle nothing can separate", () => {
+    const rows = computeStandings(
+      ["c", "b", "a"],
+      [
+        played("a", "b", [{ a: 21, b: 10 }, { a: 21, b: 10 }]),
+        played("b", "c", [{ a: 21, b: 10 }, { a: 21, b: 10 }]),
+        played("c", "a", [{ a: 21, b: 10 }, { a: 21, b: 10 }]),
+      ],
+      config,
+      nameOf,
+    );
+    // Identical on every key against each other; the order must still be stable.
+    expect(order(rows)).toEqual(["a", "b", "c"]);
+    expect(rows.every((row) => row.won === 1 && row.lost === 1)).toBe(true);
+  });
+
+  it("orders a four-way tie by recursing into the pairs that stay level", () => {
+    // a and b split with each other and both beat c and d; c and d split with
+    // each other. Wins alone leave two pairs tied, and each pair is then
+    // separated inside its own mini-table.
+    const rows = computeStandings(
+      ["a", "b", "c", "d"],
+      [
+        played("a", "b", [{ a: 21, b: 19 }, { a: 21, b: 19 }]),
+        played("a", "c", [{ a: 21, b: 0 }, { a: 21, b: 0 }]),
+        played("a", "d", [{ a: 21, b: 0 }, { a: 21, b: 0 }]),
+        played("b", "c", [{ a: 21, b: 0 }, { a: 21, b: 0 }]),
+        played("b", "d", [{ a: 21, b: 0 }, { a: 21, b: 0 }]),
+        played("c", "d", [{ a: 21, b: 19 }, { a: 21, b: 19 }]),
+      ],
+      config,
+      nameOf,
+    );
+    expect(order(rows)).toEqual(["a", "b", "c", "d"]);
+  });
+});

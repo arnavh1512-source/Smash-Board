@@ -2,19 +2,41 @@ import { ConvexError, v } from "convex/values";
 import { mutation } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { requireOrganiser } from "./lib/auth";
-import { resolveByes } from "./lib/progression";
+import { resolveWalkovers } from "./lib/progression";
 import {
+  DrawError,
   generateGroupsKnockout,
   generateKnockout,
   generateRoundRobin,
+  validateGroupsKnockout,
   type DraftMatch,
 } from "../src/lib/draw";
 
 /**
+ * Has anybody actually played in this draw?
+ *
+ * Byes are deliberately not counted. They are walkovers the generator awarded
+ * itself the moment the draw was made, with nobody on the other side and no
+ * score, so treating them as results would make a fresh draw unredrawable.
+ */
+function hasPlayedResult(match: {
+  sets: unknown[];
+  status: string;
+  aId: unknown;
+  bId: unknown;
+}): boolean {
+  if (match.sets.length > 0) return true;
+  if (match.status === "completed") return true;
+  return match.status === "walkover" && match.aId !== null && match.bId !== null;
+}
+
+/**
  * Build (or rebuild) the draw for one category.
  *
- * Every existing match in the category is deleted first, so scores already
- * entered are lost. The UI asks for confirmation before calling this.
+ * Every existing match in the category is deleted first. Once anybody has
+ * played, that is destructive enough to need saying so explicitly: the
+ * mutation refuses unless `force` is set, which the console only sends from
+ * the reset-the-draw path.
  */
 export const generate = mutation({
   args: {
@@ -22,6 +44,8 @@ export const generate = mutation({
     token: v.string(),
     /** Shuffle unseeded entrants before placing them. */
     randomise: v.boolean(),
+    /** Throw away results that have already been played. */
+    force: v.optional(v.boolean()),
   },
   returns: v.object({ matches: v.number() }),
   handler: async (ctx, args) => {
@@ -64,20 +88,28 @@ export const generate = mutation({
     const ordered = [...seeded, ...unseeded].map((e) => e._id as string);
 
     let drafts: DraftMatch[];
-    if (event.format === "knockout") {
-      drafts = generateKnockout(ordered, { thirdPlace: event.thirdPlace });
-    } else if (event.format === "round_robin") {
-      drafts = generateRoundRobin(ordered, 0, event.doubleRound);
-    } else {
-      if (event.groupCount > ordered.length) {
-        throw new ConvexError("There are fewer entrants than groups.");
+    try {
+      if (event.format === "knockout") {
+        drafts = generateKnockout(ordered, { thirdPlace: event.thirdPlace });
+      } else if (event.format === "round_robin") {
+        drafts = generateRoundRobin(ordered, 0, event.doubleRound);
+      } else {
+        // Checked before generating as well as inside it, so the organiser gets
+        // the message before anything is deleted.
+        validateGroupsKnockout(ordered.length, {
+          groupCount: event.groupCount,
+          advancePerGroup: event.advancePerGroup,
+        });
+        drafts = generateGroupsKnockout(ordered, {
+          groupCount: event.groupCount,
+          advancePerGroup: event.advancePerGroup,
+          doubleRound: event.doubleRound,
+          thirdPlace: event.thirdPlace,
+        });
       }
-      drafts = generateGroupsKnockout(ordered, {
-        groupCount: event.groupCount,
-        advancePerGroup: event.advancePerGroup,
-        doubleRound: event.doubleRound,
-        thirdPlace: event.thirdPlace,
-      });
+    } catch (error) {
+      if (error instanceof DrawError) throw new ConvexError(error.message);
+      throw error;
     }
 
     if (drafts.length === 0) throw new ConvexError("That combination produces no matches.");
@@ -86,6 +118,11 @@ export const generate = mutation({
       .query("matches")
       .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
       .collect();
+    if (!args.force && existing.some(hasPlayedResult)) {
+      throw new ConvexError(
+        "Results have already been entered for this category, and making the draw again would delete them. Reset the draw first if that is really what you want.",
+      );
+    }
     for (const match of existing) await ctx.db.delete(match._id);
 
     const now = Date.now();
@@ -109,7 +146,7 @@ export const generate = mutation({
       });
     }
 
-    await resolveByes(ctx, args.eventId);
+    await resolveWalkovers(ctx, args.eventId);
     await ctx.db.patch(args.eventId, { drawGeneratedAt: now });
     await ctx.db.patch(event.tournamentId, { updatedAt: now });
 

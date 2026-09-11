@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireOrganiser } from "./lib/auth";
-import { advanceKnockout } from "./lib/progression";
+import { applyWithdrawal } from "./lib/progression";
 import type { MutationCtx } from "./_generated/server";
 
 const entryValidator = v.object({
@@ -37,6 +37,33 @@ function clean(value: string | undefined, max: number): string | undefined {
   const trimmed = value.trim().replace(/\s+/g, " ");
   if (!trimmed) return undefined;
   return trimmed.slice(0, max);
+}
+
+/**
+ * Keep seeds unique inside a category.
+ *
+ * Two number-one seeds is not a preference, it is a broken bracket: the draw
+ * places entrants by seed order, so a duplicate silently pushes somebody into
+ * the wrong half. Gaps are fine — seeding 1, 2 and 5 is a normal thing to do —
+ * so only collisions are refused.
+ */
+async function assertSeedFree(
+  ctx: MutationCtx,
+  eventId: Id<"events">,
+  seed: number,
+  exceptId?: Id<"entries">,
+): Promise<void> {
+  if (seed <= 0) return;
+  const siblings = await ctx.db
+    .query("entries")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .collect();
+  const holder = siblings.find((e) => e.seed === seed && e._id !== exceptId);
+  if (holder) {
+    throw new ConvexError(
+      `Seed ${seed} already belongs to ${holder.playerOne}. Give this entrant a different seed, or clear theirs first.`,
+    );
+  }
 }
 
 async function loadEventForOrganiser(ctx: MutationCtx, eventId: Id<"events">, token: string) {
@@ -117,6 +144,9 @@ export const add = mutation({
       throw new ConvexError(`A category holds at most ${MAX_ENTRIES_PER_EVENT} entrants.`);
     }
 
+    const seed = Math.max(0, Math.min(args.seed ?? 0, 64));
+    await assertSeedFree(ctx, args.eventId, seed);
+
     return await ctx.db.insert("entries", {
       tournamentId: event.tournamentId,
       eventId: args.eventId,
@@ -124,7 +154,7 @@ export const add = mutation({
       playerTwo,
       club: clean(args.club, 80),
       phone: clean(args.phone, 32),
-      seed: Math.max(0, Math.min(args.seed ?? 0, 64)),
+      seed,
       withdrawn: false,
       createdAt: Date.now(),
     });
@@ -244,10 +274,34 @@ export const update = mutation({
     }
     if (args.club !== undefined) patch.club = clean(args.club, 80);
     if (args.phone !== undefined) patch.phone = clean(args.phone, 32);
-    if (args.seed !== undefined) patch.seed = Math.max(0, Math.min(args.seed, 64));
-    if (args.withdrawn !== undefined) patch.withdrawn = args.withdrawn;
+    if (args.seed !== undefined) {
+      const seed = Math.max(0, Math.min(args.seed, 64));
+      if (seed !== entry.seed) await assertSeedFree(ctx, entry.eventId, seed, entry._id);
+      patch.seed = seed;
+    }
+
+    const category = await ctx.db.get(entry.eventId);
+    const drawExists = category ? category.drawGeneratedAt !== null : false;
+
+    if (args.withdrawn !== undefined && args.withdrawn !== entry.withdrawn) {
+      // Putting somebody back into a draw that has already been made would
+      // mean deciding which matches they should have played. There is no
+      // honest answer to that, so the draw is made again instead.
+      if (!args.withdrawn && drawExists) {
+        throw new ConvexError(
+          "They have already been taken out of the draw. Generate the draw again to bring them back.",
+        );
+      }
+      patch.withdrawn = args.withdrawn;
+    }
 
     await ctx.db.patch(args.entryId, patch);
+
+    // Withdrawing is not just a flag once the draw exists: their opponents have
+    // to be given the walkovers and moved on, exactly as if they had not shown.
+    if (patch.withdrawn === true && drawExists) {
+      await applyWithdrawal(ctx, { ...entry, ...patch } as Doc<"entries">);
+    }
     return null;
   },
 });
@@ -260,36 +314,14 @@ export const remove = mutation({
     if (!entry) return null;
     await requireOrganiser(ctx, entry.tournamentId, args.token);
 
-    // Clear the entrant out of any match they were drawn into so the bracket
-    // never points at a deleted row.
-    const matches = await ctx.db
-      .query("matches")
-      .withIndex("by_event", (q) => q.eq("eventId", entry.eventId))
-      .collect();
-    for (const match of matches) {
-      const patch: Record<string, unknown> = {};
-      if (match.aId === entry._id) {
-        patch.aId = null;
-        patch.aLabel = "Withdrawn";
-      }
-      if (match.bId === entry._id) {
-        patch.bId = null;
-        patch.bLabel = "Withdrawn";
-      }
-      if (match.winnerId === entry._id) {
-        patch.winnerId = null;
-        patch.status = "scheduled";
-        patch.sets = [];
-      }
-      if (Object.keys(patch).length > 0) {
-        await ctx.db.patch(match._id, { ...patch, updatedAt: Date.now() });
-        // Clearing the winner here is not enough: the entrant was already
-        // pushed into the next round, so walk the bracket forward and take
-        // them out of every slot they reached.
-        if (match.winnerId === entry._id) {
-          await advanceKnockout(ctx, { ...match, ...patch } as Doc<"matches">, null);
-        }
-      }
+    // Once the draw exists, deleting the row would erase somebody who may
+    // already have played - leaving results reading "A beat Withdrawn 21-15".
+    // The competition has started; they withdraw from it, they do not vanish.
+    const event = await ctx.db.get(entry.eventId);
+    if (event && event.drawGeneratedAt !== null) {
+      throw new ConvexError(
+        "The draw has already been made, so entrants can no longer be deleted. Withdraw them instead, and their matches will be awarded to their opponents.",
+      );
     }
 
     await ctx.db.delete(args.entryId);

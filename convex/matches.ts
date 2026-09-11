@@ -7,9 +7,11 @@ import {
   advanceKnockout,
   clearGroupQualifiers,
   fillKnockoutFromGroups,
+  resolveWalkovers,
+  scoringForMatch,
   winnerFromSets,
 } from "./lib/progression";
-import { evaluateMatch, ScoringError, type ScoringConfig, type SetScore } from "../src/lib/scoring";
+import { evaluateMatch, ScoringError, type SetScore } from "../src/lib/scoring";
 
 const matchValidator = v.object({
   _id: v.id("matches"),
@@ -128,16 +130,20 @@ export const setScore = mutation({
       throw new ConvexError("Both sides must be decided before a score can be entered.");
     }
 
+    // The closing rounds may be played to different rules, so the scores are
+    // judged against this match's own configuration rather than the category's.
+    const scoring = await scoringForMatch(ctx, event, match);
+
     const sets = args.sets as SetScore[];
     let winnerSide;
     try {
-      winnerSide = evaluateMatch(sets, event.scoring as ScoringConfig);
+      winnerSide = evaluateMatch(sets, scoring);
     } catch (error) {
       if (error instanceof ScoringError) throw new ConvexError(error.message);
       throw error;
     }
 
-    const winnerId = winnerSide.complete ? winnerFromSets({ ...match, sets }, event.scoring as ScoringConfig) : null;
+    const winnerId = winnerSide.complete ? winnerFromSets({ ...match, sets }, scoring) : null;
     const status = winnerSide.complete ? "completed" : args.markLive === false ? "scheduled" : "live";
 
     await ctx.db.patch(args.matchId, {
@@ -149,6 +155,8 @@ export const setScore = mutation({
 
     await advanceKnockout(ctx, { ...match, sets, winnerId }, winnerId);
     if (match.stage === "group") await fillKnockoutFromGroups(ctx, event);
+    // The slot this result just filled may sit opposite a withdrawal or a bye.
+    await resolveWalkovers(ctx, event._id);
     await ctx.db.patch(match.tournamentId, { updatedAt: Date.now() });
     return null;
   },
@@ -177,6 +185,7 @@ export const setWalkover = mutation({
 
     await advanceKnockout(ctx, { ...match, sets: [], winnerId: args.winnerId }, args.winnerId);
     if (match.stage === "group") await fillKnockoutFromGroups(ctx, event);
+    await resolveWalkovers(ctx, event._id);
     await ctx.db.patch(match.tournamentId, { updatedAt: Date.now() });
     return null;
   },
@@ -223,6 +232,11 @@ export const setDetails = mutation({
     if (args.status !== undefined) {
       if (args.status === "completed" || args.status === "walkover") {
         throw new ConvexError("Enter a score or a walkover to finish a match.");
+      }
+      if (args.status === "cancelled") {
+        // A no contest is something the draw works out for itself once both
+        // sides are empty; typing it in by hand would hide a live match.
+        throw new ConvexError("Withdraw the entrants to take a match out of the draw.");
       }
       if (match.winnerId) {
         throw new ConvexError("Reset the result before changing the status.");

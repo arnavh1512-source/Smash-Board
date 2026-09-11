@@ -187,6 +187,47 @@ export function addPoint(sets: SetScore[], side: Side, config: ScoringConfig): S
   return next;
 }
 
+/**
+ * A category's scoring rules, including the optional late-round overrides.
+ *
+ * Organisers routinely play the group stage to a single game and the closing
+ * rounds to the full best-of-three, so the semi-finals and the final each get
+ * their own optional config. Absent (or null) means "use the base rules".
+ */
+export interface RoundScoring {
+  scoring: ScoringConfig;
+  semiFinalScoring?: ScoringConfig | null;
+  finalScoring?: ScoringConfig | null;
+}
+
+/** The parts of a match that decide which rules apply to it. */
+export interface RoundScoringMatch {
+  stage: string;
+  round: number;
+  isThirdPlace: boolean;
+}
+
+/**
+ * Resolve the rules one match is played under.
+ *
+ * Group matches always use the base config: an override is about the closing
+ * rounds of the knockout, and a group table read under two different rule sets
+ * would not be comparable. The third-place playoff shares the final's round, and
+ * deliberately follows the final's override — a bronze match is played to the
+ * same format as the match it runs alongside.
+ */
+export function scoringForRound(
+  event: RoundScoring,
+  match: RoundScoringMatch,
+  totalKnockoutRounds: number,
+): ScoringConfig {
+  if (match.stage !== "knockout" || totalKnockoutRounds < 1) return event.scoring;
+  const fromEnd = totalKnockoutRounds - 1 - match.round;
+  if (fromEnd === 0) return event.finalScoring ?? event.scoring;
+  if (fromEnd === 1) return event.semiFinalScoring ?? event.scoring;
+  return event.scoring;
+}
+
 /** Take a point back off one side, collapsing a set that becomes 0-0. */
 export function undoPointForSide(sets: SetScore[], side: Side): SetScore[] {
   const next = sets.map((s) => ({ ...s }));

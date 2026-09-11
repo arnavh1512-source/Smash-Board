@@ -170,11 +170,14 @@ function BulkAddForm({
 function EntryRow({
   entry,
   teamSize,
+  drawExists,
   token,
   onError,
 }: {
   entry: Doc<"entries">;
   teamSize: number;
+  /** Once the draw is made an entrant withdraws; they cannot be deleted. */
+  drawExists: boolean;
   token: string;
   onError: (message: string | null) => void;
 }) {
@@ -299,20 +302,34 @@ function EntryRow({
       <Button
         variant="ghost"
         className="min-h-10"
-        onClick={() => run(() => update({ entryId: entry._id, token, withdrawn: !entry.withdrawn }))}
+        disabled={drawExists && entry.withdrawn}
+        onClick={() => {
+          if (
+            !entry.withdrawn &&
+            drawExists &&
+            !window.confirm(
+              `Withdraw ${entryName(entry)}? Their remaining matches will be awarded to their opponents.`,
+            )
+          ) {
+            return;
+          }
+          void run(() => update({ entryId: entry._id, token, withdrawn: !entry.withdrawn }));
+        }}
       >
         {entry.withdrawn ? "Reinstate" : "Withdraw"}
       </Button>
-      <Button
-        variant="ghost"
-        className="min-h-10 opacity-70"
-        onClick={() => {
-          if (!window.confirm(`Remove ${entryName(entry)} from this category?`)) return;
-          void run(() => remove({ entryId: entry._id, token }));
-        }}
-      >
-        Remove
-      </Button>
+      {drawExists ? null : (
+        <Button
+          variant="ghost"
+          className="min-h-10 opacity-70"
+          onClick={() => {
+            if (!window.confirm(`Remove ${entryName(entry)} from this category?`)) return;
+            void run(() => remove({ entryId: entry._id, token }));
+          }}
+        >
+          Remove
+        </Button>
+      )}
     </li>
   );
 }
@@ -362,8 +379,9 @@ export function EntryManager({
 
         {event.drawGeneratedAt ? (
           <Alert kind="info">
-            The draw is already made. New or removed entrants only appear once you generate the draw
-            again.
+            The draw is already made, so entrants can no longer be deleted — withdraw them instead
+            and their remaining matches are awarded to their opponents. A new entrant only appears
+            once you generate the draw again.
           </Alert>
         ) : null}
 
@@ -390,6 +408,7 @@ export function EntryManager({
               key={entry._id}
               entry={entry}
               teamSize={event.teamSize}
+              drawExists={event.drawGeneratedAt !== null}
               token={token}
               onError={setError}
             />

@@ -66,6 +66,7 @@ describe("scoringSummary", () => {
 describe("STATUS_LABELS", () => {
   it("covers every match status", () => {
     expect(Object.keys(STATUS_LABELS).sort()).toEqual([
+      "cancelled",
       "completed",
       "live",
       "scheduled",

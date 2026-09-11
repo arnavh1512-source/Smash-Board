@@ -31,6 +31,12 @@ export const matchStatusValidator = v.union(
   v.literal("live"),
   v.literal("completed"),
   v.literal("walkover"),
+  /**
+   * Nobody can play it: both sides withdrew, or the only entrants left were
+   * taken out of the draw. It is neither scheduled nor finished, so it is kept
+   * off the order of play and read as a no contest.
+   */
+  v.literal("cancelled"),
 );
 
 export default defineSchema({
@@ -80,6 +86,14 @@ export default defineSchema({
       v.literal("groups_knockout"),
     ),
     scoring: scoringValidator,
+    /**
+     * Optional rules for the closing rounds, so a category can run the early
+     * rounds to a single game and still finish to the full best-of-three.
+     * Absent means the round is played under `scoring`.
+     */
+    semiFinalScoring: v.optional(v.union(scoringValidator, v.null())),
+    /** Also governs the third-place playoff, which shares the final's round. */
+    finalScoring: v.optional(v.union(scoringValidator, v.null())),
     /** Knockout options. */
     thirdPlace: v.boolean(),
     /** Group stage options, ignored by the other formats. */

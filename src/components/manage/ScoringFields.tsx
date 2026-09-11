@@ -11,9 +11,13 @@ import { SCORING_PRESETS, type ScoringConfig } from "@/lib/scoring";
 export function ScoringFields({
   value,
   onChange,
+  label = "Scoring preset",
+  disabled = false,
 }: {
   value: ScoringConfig;
   onChange: (next: ScoringConfig) => void;
+  label?: string;
+  disabled?: boolean;
 }) {
   const matchingPreset = SCORING_PRESETS.find(
     (preset) =>
@@ -25,8 +29,9 @@ export function ScoringFields({
 
   return (
     <div className="flex flex-col gap-3.5 border border-[var(--color-divider)] bg-[var(--color-surface)] p-3.5">
-      <Field label="Scoring preset">
+      <Field label={label}>
         <Select
+          disabled={disabled}
           value={matchingPreset?.id ?? "custom"}
           onChange={(e) => {
             const preset = SCORING_PRESETS.find((p) => p.id === e.target.value);
@@ -45,6 +50,7 @@ export function ScoringFields({
       <div className="grid gap-3.5 sm:grid-cols-2">
         <Field label="Points per set">
           <Input
+            disabled={disabled}
             type="number"
             min={1}
             max={99}
@@ -55,6 +61,7 @@ export function ScoringFields({
 
         <Field label="Sets">
           <Select
+            disabled={disabled}
             value={value.bestOf}
             onChange={(e) => onChange({ ...value, bestOf: Number(e.target.value) })}
           >
@@ -67,6 +74,7 @@ export function ScoringFields({
 
         <Field label="End of a set">
           <Select
+            disabled={disabled}
             value={value.endMode}
             onChange={(e) => {
               const endMode = e.target.value as ScoringConfig["endMode"];
@@ -86,6 +94,7 @@ export function ScoringFields({
         {value.endMode === "deuce" ? (
           <Field label="Cap" hint="The score at which one point is enough. Leave empty for no cap.">
             <Input
+              disabled={disabled}
               type="number"
               min={value.pointsPerSet + 1}
               max={99}

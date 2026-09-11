@@ -6,8 +6,16 @@
  *  2. matches won minus lost (protects against unequal games played)
  *  3. sets won minus sets lost
  *  4. points scored minus points conceded
- *  5. head-to-head result between the tied entrants
+ *  5. the same four keys again, recomputed over only the matches the tied
+ *     entrants played against each other
  *  6. entrant name, so the order is at least stable and predictable
+ *
+ * Step 5 is what makes a three-way tie come out right. A pairwise head-to-head
+ * check inside a flat comparator cannot order A, B and C when A beat B, B beat C
+ * and C beat A: the comparator is not transitive and the result depends on the
+ * order the sort happens to visit them in. Building a mini-table across just the
+ * tied entrants, then recursing into whatever is still level inside it, is the
+ * BWF procedure and is well defined however the cycle falls.
  */
 
 import { evaluateMatch, type ScoringConfig, type SetScore } from "./scoring";
@@ -49,20 +57,18 @@ function blank(entryId: string): StandingRow {
 }
 
 /**
- * Build the table for one group.
- * `nameOf` is only used for the final alphabetical tiebreak.
+ * Tally the entrants in `entryIds` over the matches they played among
+ * themselves. Matches involving anyone outside the set are ignored, which is
+ * what lets the same function build both the full group table and the mini
+ * table used to break a tie.
  */
-export function computeStandings(
+function accumulate(
   entryIds: string[],
   matches: StandingsMatch[],
   config: ScoringConfig,
-  nameOf: (entryId: string) => string,
-): StandingRow[] {
+): Map<string, StandingRow> {
   const rows = new Map<string, StandingRow>();
   for (const id of entryIds) rows.set(id, blank(id));
-
-  // head-to-head: winner id -> set of ids it has beaten
-  const beat = new Map<string, Set<string>>();
 
   for (const match of matches) {
     if (match.status !== "completed" && match.status !== "walkover") continue;
@@ -83,11 +89,6 @@ export function computeStandings(
       } else if (winnerId === bId) {
         b.won += 1;
         a.lost += 1;
-      }
-      if (winnerId) {
-        const loserId = winnerId === aId ? bId : aId;
-        if (!beat.has(winnerId)) beat.set(winnerId, new Set());
-        beat.get(winnerId)!.add(loserId);
       }
       continue;
     }
@@ -113,31 +114,79 @@ export function computeStandings(
     if (outcome.winner === "a") {
       a.won += 1;
       b.lost += 1;
-      if (!beat.has(aId)) beat.set(aId, new Set());
-      beat.get(aId)!.add(bId);
     } else if (outcome.winner === "b") {
       b.won += 1;
       a.lost += 1;
-      if (!beat.has(bId)) beat.set(bId, new Set());
-      beat.get(bId)!.add(aId);
     }
   }
 
-  const table = [...rows.values()].sort((x, y) => {
-    if (y.won !== x.won) return y.won - x.won;
-    const xDiff = x.won - x.lost;
-    const yDiff = y.won - y.lost;
-    if (yDiff !== xDiff) return yDiff - xDiff;
-    const xSets = x.setsWon - x.setsLost;
-    const ySets = y.setsWon - y.setsLost;
-    if (ySets !== xSets) return ySets - xSets;
-    const xPts = x.pointsFor - x.pointsAgainst;
-    const yPts = y.pointsFor - y.pointsAgainst;
-    if (yPts !== xPts) return yPts - xPts;
-    if (beat.get(x.entryId)?.has(y.entryId)) return -1;
-    if (beat.get(y.entryId)?.has(x.entryId)) return 1;
-    return nameOf(x.entryId).localeCompare(nameOf(y.entryId));
-  });
+  return rows;
+}
 
-  return table.map((row, index) => ({ ...row, rank: index + 1 }));
+/** The four ranking keys, in order. Zero means the two rows are level. */
+function compareRows(x: StandingRow, y: StandingRow): number {
+  return (
+    y.won - x.won ||
+    y.won - y.lost - (x.won - x.lost) ||
+    y.setsWon - y.setsLost - (x.setsWon - x.setsLost) ||
+    y.pointsFor - y.pointsAgainst - (x.pointsFor - x.pointsAgainst)
+  );
+}
+
+/**
+ * Order one set of entrants, recursing into whatever is still tied.
+ *
+ * Each call tallies only the matches played inside `ids`, so the recursion
+ * narrows the evidence as it goes: the whole group first, then the tied
+ * entrants' results against each other, and so on. A subset that is still level
+ * on every key after being measured against only itself is a genuine cycle —
+ * nothing left can separate it, so it falls back to name order.
+ */
+function orderIds(
+  ids: string[],
+  matches: StandingsMatch[],
+  config: ScoringConfig,
+  nameOf: (entryId: string) => string,
+): string[] {
+  if (ids.length <= 1) return [...ids];
+
+  const rows = accumulate(ids, matches, config);
+  const sorted = ids
+    .map((id) => rows.get(id) as StandingRow)
+    .sort((x, y) => compareRows(x, y) || nameOf(x.entryId).localeCompare(nameOf(y.entryId)));
+
+  const ordered: string[] = [];
+  for (let start = 0; start < sorted.length; ) {
+    let end = start + 1;
+    while (end < sorted.length && compareRows(sorted[start], sorted[end]) === 0) end += 1;
+    const tied = sorted.slice(start, end).map((row) => row.entryId);
+
+    if (tied.length === 1 || tied.length === ids.length) {
+      ordered.push(...tied);
+    } else {
+      ordered.push(...orderIds(tied, matches, config, nameOf));
+    }
+    start = end;
+  }
+  return ordered;
+}
+
+/**
+ * Build the table for one group.
+ * `nameOf` is only used for the final alphabetical tiebreak.
+ */
+export function computeStandings(
+  entryIds: string[],
+  matches: StandingsMatch[],
+  config: ScoringConfig,
+  nameOf: (entryId: string) => string,
+): StandingRow[] {
+  // The figures on screen are every entrant's full record. Only the ordering
+  // narrows to a tied subset, so a table never shows a player's win count
+  // shrinking because a tiebreak was applied above them.
+  const rows = accumulate(entryIds, matches, config);
+  return orderIds(entryIds, matches, config, nameOf).map((id, index) => ({
+    ...(rows.get(id) ?? blank(id)),
+    rank: index + 1,
+  }));
 }

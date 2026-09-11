@@ -42,12 +42,15 @@ function outcomeLabel(sets: SetScore[], scoring: ScoringConfig): string {
 export function ScoreDialog({
   match,
   event,
+  scoring,
   entries,
   token,
   onClose,
 }: {
   match: Doc<"matches">;
   event: Doc<"events">;
+  /** The rules this match is played to, which may differ from the category's. */
+  scoring: ScoringConfig;
   entries: EntryLookup;
   token: string;
   onClose: () => void;
@@ -57,7 +60,6 @@ export function ScoreDialog({
   const resetMatch = useMutation(api.matches.reset);
   const setDetails = useMutation(api.matches.setDetails);
 
-  const scoring = event.scoring as ScoringConfig;
   const [sets, setSets] = useState<SetScore[]>(() =>
     withBlankRow(match.sets.map((set) => ({ ...set }))),
   );

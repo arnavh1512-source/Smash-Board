@@ -82,13 +82,37 @@ export function DrawPanel({
                   setNotice(`Draw made: ${outcome.matches} matches.`);
                 },
                 hasMatches
-                  ? "Generating the draw again deletes every match and score in this category. Continue?"
+                  ? "Generating the draw again rebuilds every match in this category. Continue?"
                   : "Generate the draw for this category?",
               )
             }
           >
             {busy ? "Working…" : hasMatches ? "Generate again" : "Generate draw"}
           </Button>
+
+          {hasMatches ? (
+            <Button
+              variant="ghost"
+              className="min-h-12"
+              disabled={busy || playingCount < 2}
+              onClick={() =>
+                run(
+                  async () => {
+                    const outcome = await generate({
+                      eventId: event._id,
+                      token,
+                      randomise,
+                      force: true,
+                    });
+                    setNotice(`Draw made: ${outcome.matches} matches.`);
+                  },
+                  "This throws away every score already played in this category and builds a new draw. This cannot be undone. Continue?",
+                )
+              }
+            >
+              Reset &amp; redraw
+            </Button>
+          ) : null}
 
           {hasMatches ? (
             <Button

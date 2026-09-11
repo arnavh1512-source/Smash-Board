@@ -21,9 +21,18 @@ import { totalKnockoutRounds } from "./lib/progression";
  * without a database.
  */
 
-/** A match with a side that is empty and unlabelled is a bye: no court needed. */
-function isBye(match: Doc<"matches">): boolean {
-  return (match.aId === null && match.aLabel === null) || (match.bId === null && match.bLabel === null);
+/**
+ * Matches that never take a court: byes, walkovers awarded without play, and
+ * no contests where both sides withdrew. They still hold their place in the
+ * bracket, so they are kept in the ordering and simply given no time slot.
+ */
+const EMPTY_LABELS = new Set(["BYE", "Withdrawn"]);
+
+function needsNoCourt(match: Doc<"matches">): boolean {
+  if (match.status === "walkover" || match.status === "cancelled") return true;
+  const aEmpty = match.aId === null && (match.aLabel === null || EMPTY_LABELS.has(match.aLabel));
+  const bEmpty = match.bId === null && (match.bLabel === null || EMPTY_LABELS.has(match.bLabel));
+  return aEmpty || bEmpty;
 }
 
 /**
@@ -113,7 +122,7 @@ export const generate = mutation({
         slot: match.slot,
         sides,
         feeders: feedersFor(match, eventMatches, groupMatchIds),
-        skip: isBye(match),
+        skip: needsNoCourt(match),
       };
     });
 

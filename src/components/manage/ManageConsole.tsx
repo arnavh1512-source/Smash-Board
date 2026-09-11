@@ -11,7 +11,8 @@ import { ShareBar } from "@/components/tournament/ShareBar";
 import { useTournamentData } from "@/components/tournament/useTournamentData";
 import { useSession, errorMessage } from "@/lib/useSession";
 import { scoringSummary } from "@/lib/display";
-import type { ScoringConfig } from "@/lib/scoring";
+import { scoringForRound, type RoundScoring, type ScoringConfig } from "@/lib/scoring";
+import { countKnockoutRounds } from "@/lib/draw";
 import { PinGate } from "./PinGate";
 import { EventForm } from "./EventForm";
 import { EntryManager } from "./EntryManager";
@@ -181,6 +182,19 @@ export function ManageConsole({
   const matchMinutes = tournament.schedule?.matchMinutes ?? DEFAULT_SCHEDULE.matchMinutes;
   // The live dialog needs the freshest copy of the match, not the one captured on click.
   const openMatch = scoringMatch ? matches.find((m) => m._id === scoringMatch._id) ?? null : null;
+  const openEvent = openMatch
+    ? events.find((e) => e._id === openMatch.eventId) ?? activeEvent
+    : null;
+  // The closing rounds may be played to their own rules, so the dialog is told
+  // which configuration this particular match is governed by.
+  const openScoring =
+    openMatch && openEvent
+      ? scoringForRound(
+          openEvent as unknown as RoundScoring,
+          openMatch,
+          countKnockoutRounds(matches.filter((m) => m.eventId === openMatch.eventId)),
+        )
+      : null;
 
   return (
     <div className="mx-auto w-full max-w-3xl">
@@ -334,10 +348,11 @@ export function ManageConsole({
         </div>
       )}
 
-      {openMatch && activeEvent ? (
+      {openMatch && openEvent && openScoring ? (
         <ScoreDialog
           match={openMatch}
-          event={events.find((e) => e._id === openMatch.eventId) ?? activeEvent}
+          event={openEvent}
+          scoring={openScoring}
           entries={entryMap}
           token={token}
           onClose={() => setScoringMatch(null)}
