@@ -272,12 +272,20 @@ function EntryRow({
         {entry.club ? <p className="m-0 truncate text-[11px] opacity-55">{entry.club}</p> : null}
       </div>
 
-      <label className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.08em] opacity-70">
+      <label
+        className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.08em] opacity-70"
+        title={
+          drawExists
+            ? "The draw has already been made, so seeds are fixed. Clear the draw to reseed."
+            : undefined
+        }
+      >
         Seed
         <Input
           type="number"
           min={0}
           max={64}
+          disabled={drawExists}
           defaultValue={entry.seed}
           className="w-16 min-h-10 px-2 py-1"
           onBlur={(e) => {
@@ -381,7 +389,8 @@ export function EntryManager({
           <Alert kind="info">
             The draw is already made, so entrants can no longer be deleted — withdraw them instead
             and their remaining matches are awarded to their opponents. A new entrant only appears
-            once you generate the draw again.
+            once you generate the draw again. Seeds are fixed too — the bracket was built from the
+            seeds as they stood and does not rearrange itself, so reseeding means drawing again.
           </Alert>
         ) : null}
 

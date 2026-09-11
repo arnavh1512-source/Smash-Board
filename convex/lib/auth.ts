@@ -280,5 +280,14 @@ export function publicTournament(tournament: Doc<"tournaments">) {
   } = tournament;
   // Whether a referee PIN exists is not secret, and the console needs to know
   // so it can offer "set one up" rather than "share the link".
-  return { ...rest, hasRefereePin: _refereePinHash !== undefined };
+  const showOrganiserContact = tournament.showOrganiserContact === true;
+  return {
+    ...rest,
+    // A phone number is contact detail, not scoreboard data. It leaves the
+    // server only when the organiser has said it may; the console reads its
+    // own copy back through `revealOrganiserContact`, behind the PIN.
+    organiserPhone: showOrganiserContact ? rest.organiserPhone : undefined,
+    showOrganiserContact,
+    hasRefereePin: _refereePinHash !== undefined,
+  };
 }

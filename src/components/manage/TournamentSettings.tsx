@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -19,12 +19,15 @@ export interface TournamentDetails {
   notes?: string;
   organiserName?: string;
   organiserPhone?: string;
+  /** Whether the phone number above goes out with the public page. */
+  showOrganiserContact: boolean;
   isPublic: boolean;
   hasRefereePin: boolean;
 }
 
 function DetailsForm({ tournament, token }: { tournament: TournamentDetails; token: string }) {
   const update = useMutation(api.tournaments.update);
+  const revealContact = useMutation(api.tournaments.revealOrganiserContact);
   const [draft, setDraft] = useState({
     name: tournament.name,
     venue: tournament.venue ?? "",
@@ -33,11 +36,30 @@ function DetailsForm({ tournament, token }: { tournament: TournamentDetails; tok
     notes: tournament.notes ?? "",
     organiserName: tournament.organiserName ?? "",
     organiserPhone: tournament.organiserPhone ?? "",
+    showOrganiserContact: tournament.showOrganiserContact,
     isPublic: tournament.isPublic,
   });
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // An unpublished phone number never travels with the public payload, so the
+  // form asks for its own copy behind the PIN. Without it a save would write
+  // the empty field back and quietly lose the number.
+  useEffect(() => {
+    if (tournament.showOrganiserContact) return;
+    let live = true;
+    void revealContact({ tournamentId: tournament._id, token })
+      .then((phone) => {
+        if (live && phone) setDraft((current) => ({ ...current, organiserPhone: phone }));
+      })
+      .catch(() => {
+        // A failed reveal leaves the field blank; the organiser can retype it.
+      });
+    return () => {
+      live = false;
+    };
+  }, [revealContact, tournament._id, tournament.showOrganiserContact, token]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -112,6 +134,12 @@ function DetailsForm({ tournament, token }: { tournament: TournamentDetails; tok
             onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
           />
         </Field>
+
+        <Checkbox
+          checked={draft.showOrganiserContact}
+          onChange={(e) => setDraft({ ...draft, showOrganiserContact: e.target.checked })}
+          label="Show the organiser's phone number on the public page"
+        />
 
         <Checkbox
           checked={draft.isPublic}

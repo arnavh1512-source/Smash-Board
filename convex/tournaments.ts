@@ -26,7 +26,9 @@ const publicTournamentValidator = v.object({
   endDate: v.optional(v.string()),
   notes: v.optional(v.string()),
   organiserName: v.optional(v.string()),
+  /** Only present when the organiser chose to publish it. */
   organiserPhone: v.optional(v.string()),
+  showOrganiserContact: v.boolean(),
   isPublic: v.boolean(),
   /** Whether a referee PIN exists. The hash itself never leaves the server. */
   hasRefereePin: v.boolean(),
@@ -70,6 +72,7 @@ export const create = mutation({
     notes: v.optional(v.string()),
     organiserName: v.optional(v.string()),
     organiserPhone: v.optional(v.string()),
+    showOrganiserContact: v.optional(v.boolean()),
     pin: v.string(),
     isPublic: v.boolean(),
   },
@@ -113,6 +116,7 @@ export const create = mutation({
       notes: cleanText(args.notes, 2000),
       organiserName: cleanText(args.organiserName, 120),
       organiserPhone: cleanText(args.organiserPhone, 32),
+      showOrganiserContact: args.showOrganiserContact === true,
       pinHash: await hashPin(args.pin, salt),
       pinSalt: salt,
       isPublic: args.isPublic,
@@ -166,6 +170,7 @@ export const update = mutation({
     notes: v.optional(v.string()),
     organiserName: v.optional(v.string()),
     organiserPhone: v.optional(v.string()),
+    showOrganiserContact: v.optional(v.boolean()),
     isPublic: v.optional(v.boolean()),
   },
   returns: v.null(),
@@ -184,10 +189,31 @@ export const update = mutation({
     if (args.notes !== undefined) patch.notes = cleanText(args.notes, 2000);
     if (args.organiserName !== undefined) patch.organiserName = cleanText(args.organiserName, 120);
     if (args.organiserPhone !== undefined) patch.organiserPhone = cleanText(args.organiserPhone, 32);
+    if (args.showOrganiserContact !== undefined) {
+      patch.showOrganiserContact = args.showOrganiserContact;
+    }
     if (args.isPublic !== undefined) patch.isPublic = args.isPublic;
 
     await ctx.db.patch(args.tournamentId, patch);
     return null;
+  },
+});
+
+/**
+ * Hand the organiser their own phone number back.
+ *
+ * The public payload drops it unless it has been published, so the settings
+ * form would otherwise have nothing to edit. A mutation rather than a query,
+ * for the same reason as `entries.revealContact`: every read goes through the
+ * PIN check that counts wrong attempts.
+ */
+export const revealOrganiserContact = mutation({
+  args: { tournamentId: v.id("tournaments"), token: v.string() },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    await requireOrganiser(ctx, args.tournamentId, args.token);
+    const tournament = await ctx.db.get(args.tournamentId);
+    return tournament?.organiserPhone ?? null;
   },
 });
 

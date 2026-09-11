@@ -27,6 +27,7 @@ export function CreateTournamentForm() {
   const [endDate, setEndDate] = useState("");
   const [organiserName, setOrganiserName] = useState("");
   const [organiserPhone, setOrganiserPhone] = useState("");
+  const [showOrganiserContact, setShowOrganiserContact] = useState(true);
   const [notes, setNotes] = useState("");
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -53,6 +54,7 @@ export function CreateTournamentForm() {
         notes: notes || undefined,
         organiserName: organiserName || undefined,
         organiserPhone: organiserPhone || undefined,
+        showOrganiserContact,
         pin,
         isPublic,
       });
@@ -118,7 +120,10 @@ export function CreateTournamentForm() {
           <Input value={organiserName} onChange={(e) => setOrganiserName(e.target.value)} />
         </Field>
 
-        <Field label="Organiser phone" hint="Shown to players so they can reach you.">
+        <Field
+          label="Organiser phone"
+          hint="Kept private unless you tick the box below."
+        >
           <Input
             type="tel"
             value={organiserPhone}
@@ -126,6 +131,12 @@ export function CreateTournamentForm() {
             placeholder="+91 98765 43210"
           />
         </Field>
+
+        <Checkbox
+          checked={showOrganiserContact}
+          onChange={(e) => setShowOrganiserContact(e.target.checked)}
+          label="Show this number on the public page so players can reach you"
+        />
 
         <hr className="hr" style={{ margin: 0 }} />
         <Step number="03" title="Your key" />

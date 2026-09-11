@@ -115,7 +115,27 @@ function CategoryList({
                 try {
                   await remove({ eventId: event._id, token });
                 } catch (caught) {
-                  setError(errorMessage(caught));
+                  // A category holding played matches is refused the first time.
+                  // Deleting a record of a competition is not undoable from
+                  // anywhere in the product, so the organiser is told exactly
+                  // what is about to be thrown away and has to say yes again.
+                  const message = errorMessage(caught);
+                  if (!message.includes("has results in it")) {
+                    setError(message);
+                    return;
+                  }
+                  if (
+                    !window.confirm(
+                      `${event.name} has matches that have already been played. Deleting it throws those results away for good. Delete it anyway?`,
+                    )
+                  ) {
+                    return;
+                  }
+                  try {
+                    await remove({ eventId: event._id, token, force: true });
+                  } catch (forced) {
+                    setError(errorMessage(forced));
+                  }
                 }
               }}
             >

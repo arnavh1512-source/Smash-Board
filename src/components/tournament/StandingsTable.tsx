@@ -73,7 +73,9 @@ export function StandingsTable({
       </table>
       <p className="mt-2 mb-0 text-[11px] opacity-55">
         Ranked by matches won, then wins minus losses, set difference, point difference and finally
-        the head-to-head result.
+        the head-to-head result. A walkover counts as a played match — a win for one side and a
+        loss for the other — but adds no sets and no points, so it never moves the difference
+        columns.
       </p>
     </div>
   );

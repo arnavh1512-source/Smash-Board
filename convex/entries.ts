@@ -188,7 +188,11 @@ export const addMany = mutation({
         skipped.push(`${line} (category is full)`);
         continue;
       }
-      const [namePart, clubPart] = line.split(",");
+      // Only the first comma separates the club, so a club name that carries
+      // its own commas ("Ahmedabad SC, Gujarat") survives the import intact.
+      const comma = line.indexOf(",");
+      const namePart = comma === -1 ? line : line.slice(0, comma);
+      const clubPart = comma === -1 ? undefined : line.slice(comma + 1);
       const players = namePart.split(/[/&]/).map((p) => clean(p, 80)).filter(Boolean) as string[];
       if (players.length === 0) {
         skipped.push(line);
@@ -274,14 +278,25 @@ export const update = mutation({
     }
     if (args.club !== undefined) patch.club = clean(args.club, 80);
     if (args.phone !== undefined) patch.phone = clean(args.phone, 32);
-    if (args.seed !== undefined) {
-      const seed = Math.max(0, Math.min(args.seed, 64));
-      if (seed !== entry.seed) await assertSeedFree(ctx, entry.eventId, seed, entry._id);
-      patch.seed = seed;
-    }
-
     const category = await ctx.db.get(entry.eventId);
     const drawExists = category ? category.drawGeneratedAt !== null : false;
+
+    if (args.seed !== undefined) {
+      const seed = Math.max(0, Math.min(args.seed, 64));
+      if (seed !== entry.seed) {
+        // The bracket was built from the seeds as they stood, and it does not
+        // rearrange itself. Letting the number change now would print a seed
+        // the draw never used, which reads as a placement error that is not
+        // there. The seeds move when the draw is made again.
+        if (drawExists) {
+          throw new ConvexError(
+            "The draw has already been made, so seeds are fixed. Clear the draw to reseed the category.",
+          );
+        }
+        await assertSeedFree(ctx, entry.eventId, seed, entry._id);
+      }
+      patch.seed = seed;
+    }
 
     if (args.withdrawn !== undefined && args.withdrawn !== entry.withdrawn) {
       // Putting somebody back into a draw that has already been made would

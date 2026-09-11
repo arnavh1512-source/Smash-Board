@@ -304,7 +304,7 @@ describe("scenario A: 20 entrants, seeded knockout with a third-place playoff", 
 
   afterAll(async () => {
     await client.mutation(api.schedule.clear, { tournamentId, token });
-    await client.mutation(api.events.remove, { eventId, token });
+    await client.mutation(api.events.remove, { eventId, token, force: true });
   }, 60_000);
 });
 
@@ -423,7 +423,8 @@ describe("scenario B: 16 entrants, four groups of four, top two qualify", () => 
   }
 
   afterAll(async () => {
-    await client.mutation(api.events.remove, { eventId, token });
+    // The category has been played through, so the cleanup has to say so.
+    await client.mutation(api.events.remove, { eventId, token, force: true });
   }, 60_000);
 });
 
@@ -495,6 +496,101 @@ describe("late rounds played to their own rules", () => {
   });
 
   afterAll(async () => {
-    await client.mutation(api.events.remove, { eventId, token });
+    // The category has been played through, so the cleanup has to say so.
+    await client.mutation(api.events.remove, { eventId, token, force: true });
   }, 60_000);
+});
+
+describe("the guards that stand between an organiser and a lost result", () => {
+  /** A four-entrant knockout with its draw already made. */
+  async function drawnEvent(name: string): Promise<Id<"events">> {
+    const eventId = await createEvent({ name, format: "knockout" });
+    await client.mutation(api.entries.addMany, { eventId, token, text: roster(4) });
+    await client.mutation(api.draws.generate, { eventId, token, randomise: false });
+    return eventId;
+  }
+
+  it("locks the seeds once the draw is made but leaves the rest of the entry editable", async () => {
+    const eventId = await createEvent({ name: "Seed Lock", format: "knockout" });
+    await client.mutation(api.entries.addMany, { eventId, token, text: roster(4) });
+
+    // Before the draw the seed is just a number on a form.
+    const [first] = await listEntries(eventId);
+    await client.mutation(api.entries.update, { entryId: first._id, token, seed: 1 });
+    expect((await listEntries(eventId)).find((e) => e._id === first._id)!.seed).toBe(1);
+
+    await client.mutation(api.draws.generate, { eventId, token, randomise: false });
+
+    // After it, the bracket is built from that number and does not rearrange.
+    const message = await rejects(
+      client.mutation(api.entries.update, { entryId: first._id, token, seed: 4 }),
+    );
+    expect(message).toMatch(/draw|seed/i);
+    expect((await listEntries(eventId)).find((e) => e._id === first._id)!.seed).toBe(1);
+
+    // Everything that does not move a placement still saves.
+    await client.mutation(api.entries.update, {
+      entryId: first._id,
+      token,
+      playerOne: "Renamed Player",
+      club: "Ahmedabad SC, Gujarat",
+    });
+    const renamed = (await listEntries(eventId)).find((e) => e._id === first._id)!;
+    expect(renamed.playerOne).toBe("Renamed Player");
+    expect(renamed.club).toBe("Ahmedabad SC, Gujarat");
+
+    await client.mutation(api.events.remove, { eventId, token });
+  }, 120_000);
+
+  it("will not turn a played result into a walkover until it has been reset", async () => {
+    const eventId = await drawnEvent("Walkover Guard");
+    const match = (await listMatches(eventId)).find((m) => m.aId !== null && m.bId !== null)!;
+
+    await setScore(match._id, WIN);
+    const played = (await listMatches(eventId)).find((m) => m._id === match._id)!;
+    expect(played.status).toBe("completed");
+
+    const message = await rejects(
+      client.mutation(api.matches.setWalkover, {
+        matchId: match._id,
+        token,
+        winnerId: played.bId,
+      }),
+    );
+    expect(message).toMatch(/reset/i);
+    expect((await listMatches(eventId)).find((m) => m._id === match._id)!.sets).toHaveLength(2);
+
+    // Reset first, then the same walkover goes through.
+    await client.mutation(api.matches.reset, { matchId: match._id, token });
+    await client.mutation(api.matches.setWalkover, {
+      matchId: match._id,
+      token,
+      winnerId: played.bId,
+    });
+    const awarded = (await listMatches(eventId)).find((m) => m._id === match._id)!;
+    expect(awarded.status).toBe("walkover");
+    expect(awarded.winnerId).toBe(played.bId);
+    expect(awarded.sets).toEqual([]);
+
+    await client.mutation(api.events.remove, { eventId, token, force: true });
+  }, 120_000);
+
+  it("refuses to delete a category holding results until the deletion is confirmed", async () => {
+    // An empty category is ordinary housekeeping and goes without a fight.
+    const empty = await createEvent({ name: "Empty Category", format: "knockout" });
+    await client.mutation(api.events.remove, { eventId: empty, token });
+
+    const eventId = await drawnEvent("Deletion Guard");
+    const match = (await listMatches(eventId)).find((m) => m.aId !== null && m.bId !== null)!;
+    await setScore(match._id, WIN);
+
+    const message = await rejects(client.mutation(api.events.remove, { eventId, token }));
+    expect(message).toMatch(/has results in it/);
+    // The refusal is a transaction that rolled back: nothing was thrown away.
+    expect(await listMatches(eventId)).not.toHaveLength(0);
+    expect(await listEntries(eventId)).toHaveLength(4);
+
+    await client.mutation(api.events.remove, { eventId, token, force: true });
+    expect(await listMatches(eventId)).toHaveLength(0);
+  }, 120_000);
 });

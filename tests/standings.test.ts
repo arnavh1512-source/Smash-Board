@@ -274,6 +274,52 @@ describe("multi-way ties", () => {
     expect(rows.every((row) => row.won === 1 && row.lost === 1)).toBe(true);
   });
 
+  it("lifts one entrant out of a three-way tie and separates the rest below it", () => {
+    // Another cycle, but the margins are chosen so the mini-table only settles
+    // the top place: c is clear on point difference while a and b come out of
+    // it dead level on all four keys, which forces a further pass over just the
+    // two of them — where a beat b.
+    const rows = computeStandings(
+      ["a", "b", "c", "d"],
+      [
+        played("a", "b", [{ a: 21, b: 11 }, { a: 21, b: 11 }]),
+        played("b", "c", [{ a: 21, b: 16 }, { a: 21, b: 16 }]),
+        played("c", "a", [{ a: 21, b: 6 }, { a: 21, b: 6 }]),
+        played("a", "d", [{ a: 21, b: 0 }, { a: 21, b: 0 }]),
+        played("b", "d", [{ a: 21, b: 0 }, { a: 21, b: 0 }]),
+        played("c", "d", [{ a: 21, b: 0 }, { a: 21, b: 0 }]),
+      ],
+      config,
+      nameOf,
+    );
+    // Inside the tied three: c +20, a -10, b -10. c is clear, then a beat b.
+    expect(order(rows)).toEqual(["c", "a", "b", "d"]);
+  });
+
+  it("lets a walkover decide a tied group without adding sets or points", () => {
+    // All three finish level on matches won, but b's win was awarded without
+    // play, so it brings no sets with it and b drops to the bottom.
+    const rows = computeStandings(
+      ["a", "b", "c"],
+      [
+        played("a", "b", [{ a: 21, b: 10 }, { a: 21, b: 10 }]),
+        { aId: "b", bId: "c", sets: [], status: "walkover", walkoverWinnerId: "b" },
+        played("c", "a", [{ a: 21, b: 10 }, { a: 21, b: 10 }]),
+      ],
+      config,
+      nameOf,
+    );
+    expect(order(rows)).toEqual(["c", "a", "b"]);
+    expect(rows.find((row) => row.entryId === "b")).toMatchObject({
+      played: 2,
+      won: 1,
+      lost: 1,
+      setsWon: 0,
+      setsLost: 2,
+      pointsFor: 20,
+    });
+  });
+
   it("orders a four-way tie by recursing into the pairs that stay level", () => {
     // a and b split with each other and both beat c and d; c and d split with
     // each other. Wins alone leave two pairs tied, and each pair is then

@@ -50,6 +50,12 @@ export default defineSchema({
     notes: v.optional(v.string()),
     organiserName: v.optional(v.string()),
     organiserPhone: v.optional(v.string()),
+    /**
+     * Whether the organiser's phone number goes out with the public page.
+     * A missing value reads as false: a number collected before the switch
+     * existed was never explicitly offered to the public, so it stays in.
+     */
+    showOrganiserContact: v.optional(v.boolean()),
     /** SHA-256 of salt + PIN. The PIN itself is never stored. */
     pinHash: v.string(),
     pinSalt: v.string(),

@@ -8,6 +8,7 @@ import type { EntryLookup } from "@/components/tournament/MatchRow";
 import { Alert, Badge, Button, Field, Input, cx } from "@/components/ui";
 import { scoringSummary, sideName, STATUS_LABELS } from "@/lib/display";
 import { errorMessage } from "@/lib/useSession";
+import { hasPlayedResult } from "@/lib/results";
 import {
   addPoint,
   evaluateMatch,
@@ -73,6 +74,9 @@ export function ScoreDialog({
   const aName = sideName(aEntry, match.aLabel);
   const bName = sideName(bEntry, match.bLabel);
   const bothDecided = Boolean(match.aId && match.bId);
+  // The same question the server asks before it refuses a walkover, so the
+  // buttons go quiet instead of throwing an error the organiser has to read.
+  const played = hasPlayedResult(match);
 
   async function run(action: () => Promise<unknown>, close = false) {
     setError(null);
@@ -298,14 +302,16 @@ export function ScoreDialog({
             <div className="rule-t mt-4 pt-3.5">
               <p className="field-label m-0">Walkover</p>
               <p className="m-0 mt-1 text-[12px] opacity-70">
-                Records a win with no score. Use it when one side does not turn up.
+                {played
+                  ? "This match already has a result. Reset it below, then award the walkover — a played score is never overwritten in one tap."
+                  : "Records a win with no score. Use it when one side does not turn up. It counts as a win and a loss in the group table but adds no sets or points."}
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {aEntry ? (
                   <Button
                     variant="secondary"
                     className="min-h-12"
-                    disabled={busy}
+                    disabled={busy || played}
                     onClick={() =>
                       run(() => setWalkover({ matchId: match._id, token, winnerId: aEntry._id }), true)
                     }
@@ -317,7 +323,7 @@ export function ScoreDialog({
                   <Button
                     variant="secondary"
                     className="min-h-12"
-                    disabled={busy}
+                    disabled={busy || played}
                     onClick={() =>
                       run(() => setWalkover({ matchId: match._id, token, winnerId: bEntry._id }), true)
                     }

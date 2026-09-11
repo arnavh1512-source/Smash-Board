@@ -23,6 +23,27 @@ a score entered by the organiser appears on every open scoreboard without a refr
   with a guaranteed rest between a player's matches and another category filling the court while
   they take it. Readable in time order or court by court, by organiser and public alike.
 
+## What the draw refuses to let you undo by accident
+
+A tournament day is a live record, so the console draws a line between changing something that
+has not happened yet and throwing away something that has.
+
+- **Seeds are fixed once the draw is made.** The bracket was built from the seeds as they stood
+  and does not rearrange itself, so a seed changed afterwards would print a number the draw never
+  used. Name, club, phone and withdrawal stay editable; to reseed, generate the draw again.
+- **A category holding played matches is not deleted on the first ask.** Deleting an empty
+  category is ordinary housekeeping and goes through. One with results in it is refused, and the
+  organiser has to confirm a second time knowing exactly what is about to be lost.
+- **A played result is never overwritten by a walkover.** Correcting a result is a two-step move
+  everywhere in the console: reset the match, then enter the right thing. Going straight from a
+  score to "did not play" would erase it with one tap.
+- **A walkover counts as a played match** — a win for one side, a loss for the other — but brings
+  no sets and no points with it, so it never moves the set-difference or point-difference columns
+  of a group table. That rule is printed under every standings table.
+- **The organiser's phone number is private unless it is published.** A tick box on the
+  tournament form decides whether the number travels with the public page; without it the number
+  stays on the server and only the console can read it back, behind the PIN.
+
 ## How access works
 
 A tournament is guarded by a PIN chosen when it is created, and optionally by a second,

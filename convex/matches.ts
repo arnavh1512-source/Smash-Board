@@ -12,6 +12,7 @@ import {
   winnerFromSets,
 } from "./lib/progression";
 import { evaluateMatch, ScoringError, type SetScore } from "../src/lib/scoring";
+import { hasPlayedResult } from "../src/lib/results";
 
 const matchValidator = v.object({
   _id: v.id("matches"),
@@ -174,6 +175,16 @@ export const setWalkover = mutation({
     const { match, event } = await loadMatchForScorer(ctx, args.matchId, args.token);
     if (args.winnerId && args.winnerId !== match.aId && args.winnerId !== match.bId) {
       throw new ConvexError("The winner must be one of the two sides in this match.");
+    }
+
+    // A played result is never turned into a walkover in place. Correcting one
+    // is a two-step move everywhere else in the console — reset, then enter the
+    // right thing — and going straight from 21-15 to "did not play" would erase
+    // a score with one tap and no trace of what it was.
+    if (args.winnerId && hasPlayedResult(match)) {
+      throw new ConvexError(
+        "This match already has a result. Reset it first, then award the walkover.",
+      );
     }
 
     await ctx.db.patch(args.matchId, {

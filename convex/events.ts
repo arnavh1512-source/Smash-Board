@@ -6,6 +6,7 @@ import { requireOrganiser } from "./lib/auth";
 import { scoringValidator } from "./schema";
 import { countKnockoutRounds } from "../src/lib/draw";
 import { validateConfig, ScoringError, type ScoringConfig } from "../src/lib/scoring";
+import { hasPlayedResult } from "../src/lib/results";
 
 const formatValidator = v.union(
   v.literal("knockout"),
@@ -267,8 +268,21 @@ export const update = mutation({
   },
 });
 
+/**
+ * Delete a category and everything under it.
+ *
+ * An empty category goes quietly. One that has been played is a record of a
+ * competition, and deleting it cannot be undone from anywhere in the product,
+ * so it needs the same deliberate second step the destructive redraw needs:
+ * the console asks again and only then sends `force`.
+ */
 export const remove = mutation({
-  args: { eventId: v.id("events"), token: v.string() },
+  args: {
+    eventId: v.id("events"),
+    token: v.string(),
+    /** Throw away results that have already been played. */
+    force: v.optional(v.boolean()),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const event = await ctx.db.get(args.eventId);
@@ -279,6 +293,12 @@ export const remove = mutation({
       .query("matches")
       .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
       .collect();
+    if (!args.force && matches.some(hasPlayedResult)) {
+      throw new ConvexError(
+        "This category has results in it. Deleting it would throw away matches that have been played — confirm the deletion to go ahead.",
+      );
+    }
+
     for (const match of matches) await ctx.db.delete(match._id);
 
     const entries = await ctx.db
