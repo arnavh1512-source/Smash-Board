@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   planSchedule,
-  personKey,
   type PlannerMatch,
   type ScheduleOptions,
   type ScheduledSlot,
 } from "@/lib/schedule";
+import { personKey } from "@/lib/identity";
 
 /**
  * One full tournament day, planned under pressure.

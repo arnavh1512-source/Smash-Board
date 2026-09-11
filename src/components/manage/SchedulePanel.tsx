@@ -7,6 +7,7 @@ import type { Doc, Id } from "../../../convex/_generated/dataModel";
 import { Alert, Button, Field, Input, Section, cx } from "@/components/ui";
 import { CourtGrid } from "@/components/tournament/CourtGrid";
 import { OrderOfPlay } from "@/components/tournament/OrderOfPlay";
+import { StaleScheduleNotice } from "@/components/tournament/StaleScheduleNotice";
 import type { EntryLookup } from "@/components/tournament/MatchRow";
 import { DEFAULT_SCHEDULE, clockOf, dayOf } from "@/lib/schedule";
 import { errorMessage } from "@/lib/useSession";
@@ -122,6 +123,8 @@ export function SchedulePanel({
             />
           </Field>
         </div>
+
+        {planned ? <StaleScheduleNotice tournamentId={tournamentId} audience="organiser" /> : null}
 
         {error ? <Alert kind="error">{error}</Alert> : null}
         {notice ? <Alert kind="success">{notice}</Alert> : null}

@@ -8,6 +8,7 @@ import { EventPanel } from "./EventPanel";
 import { MatchRow } from "./MatchRow";
 import { OrderOfPlay } from "./OrderOfPlay";
 import { ShareBar } from "./ShareBar";
+import { StaleScheduleNotice } from "./StaleScheduleNotice";
 import { useTournamentData } from "./useTournamentData";
 import { DEFAULT_SCHEDULE } from "@/lib/schedule";
 
@@ -130,6 +131,14 @@ export function TournamentView({ slug }: { slug: string }) {
                 </button>
               ))}
             </nav>
+          ) : null}
+
+          {showOrder || showCourts ? (
+            <StaleScheduleNotice
+              tournamentId={tournament._id}
+              audience="public"
+              className="rule-b2 px-4 py-3.5"
+            />
           ) : null}
 
           {showCourts ? (

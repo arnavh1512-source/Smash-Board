@@ -66,16 +66,53 @@ export const DEFAULT_SCHEDULE: ScheduleOptions & { dayStart: string } = {
 export class ScheduleError extends Error {}
 
 /**
- * The key a person is tracked by while the day is planned.
- *
- * Rest is owed to a human being, not to an entry. The same player can be in the
- * singles and the doubles, which are two separate entries with two separate
- * ids, so the planner is fed names rather than entry ids — otherwise a player
- * could be put on two courts at the same minute, or sent straight from one
- * match into the next.
+ * A short, stable digest of a string. Not a security hash and not meant to be:
+ * it exists only to tell "this is the same input as last time" from "this is
+ * not", cheaply and without a crypto call.
  */
-export function personKey(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, " ");
+function fingerprint(text: string): string {
+  let fnv = 0x811c9dc5;
+  let djb = 5381;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    fnv = Math.imul(fnv ^ code, 0x01000193);
+    djb = Math.imul(djb, 33) ^ code;
+  }
+  const hex = (n: number) => (n >>> 0).toString(16).padStart(8, "0");
+  return `${hex(fnv)}${hex(djb)}`;
+}
+
+/**
+ * A fingerprint of everything the planner reads.
+ *
+ * An order of play is not a permanent fact. It is an answer derived from the
+ * tournament as it stood at the minute it was generated, and the tournament
+ * keeps moving: an entrant withdraws, a walkover resolves, a group decides who
+ * qualifies, the categories are reordered, the whole thing moves to another
+ * day. The times are still sitting on the matches afterwards, which is exactly
+ * why an old plan is dangerous — it looks authoritative.
+ *
+ * Rather than asking every mutation to remember to raise a flag, the planner's
+ * own input is fingerprinted. The value is stored when the plan is made and
+ * recomputed when it is read, so anything at all that would change the
+ * planner's answer shows up as stale without a mutation having to know that
+ * the scheduler exists.
+ */
+export function scheduleBasis(startDate: string, matches: readonly PlannerMatch[]): string {
+  const lines = matches
+    .map((match) =>
+      [
+        match.id,
+        match.eventOrder,
+        match.round,
+        match.slot,
+        match.skip ? "no-court" : "court",
+        [...match.sides].sort().join("+"),
+        [...match.feeders].sort().join("+"),
+      ].join("|"),
+    )
+    .sort();
+  return fingerprint([startDate, ...lines].join("\n"));
 }
 
 function assertOptions(options: ScheduleOptions): void {

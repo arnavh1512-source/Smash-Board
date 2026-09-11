@@ -30,8 +30,28 @@ import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 
+/** Wrong guesses a whole tournament tolerates before its PINs stop working. */
 const MAX_ATTEMPTS = 8;
 const LOCKOUT_MS = 10 * 60 * 1000;
+
+/**
+ * The per-source layer.
+ *
+ * The tournament-wide lockout above is the last line, and on its own it is also
+ * an attack: the sign-in door is public, so anybody holding the link could post
+ * eight wrong PINs and shut the organiser out of their own console mid-match.
+ * So each caller is throttled first, and — the part that actually defuses the
+ * attack — a single caller may only spend `SOURCE_QUOTA` of the tournament's
+ * eight. Locking a tournament out now takes a crowd rather than one person.
+ *
+ * The source is self-declared (the console sends a random id it keeps in the
+ * browser), so it proves nothing and can be rotated. That is exactly why the
+ * tournament-wide lock stays underneath it: the two layers are weak and strong
+ * against opposite things.
+ */
+const SOURCE_MAX_ATTEMPTS = 5;
+const SOURCE_LOCKOUT_MS = 15 * 60 * 1000;
+const SOURCE_QUOTA = 3;
 
 /** A token lasts a tournament day, then the organiser signs in again. */
 export const SESSION_MS = 12 * 60 * 60 * 1000;
@@ -136,9 +156,10 @@ async function readToken(
 }
 
 /** How long is left on a lockout, worded the same wherever it is reported. */
-function lockoutMessage(remainingMs: number): string {
+function lockoutMessage(remainingMs: number, scope: "tournament" | "device"): string {
   const minutes = Math.ceil(remainingMs / 60000);
-  return `Too many wrong PINs. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
+  const who = scope === "device" ? "from this device" : "for this tournament";
+  return `Too many wrong PINs ${who}. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
 }
 
 /** What the sign-in door reports back. It never throws for a wrong PIN. */
@@ -154,6 +175,12 @@ export type SignInResult =
  * a guesser should not get a fresh eight tries by switching which PIN they
  * claim to be entering.
  *
+ * `source` is an id the caller supplies for itself — the console keeps a random
+ * one in the browser. It proves nothing, which is why the tournament-wide lock
+ * stays underneath it; what it buys is that an ordinary attacker throttles
+ * themselves long before they can spend the tournament's whole budget of wrong
+ * guesses. Callers that send nothing share a single crowded bucket.
+ *
  * Returns a verdict rather than throwing, because a throw would roll back the
  * very write that records the wrong guess.
  */
@@ -162,13 +189,38 @@ export async function attemptSignIn(
   tournamentId: Id<"tournaments">,
   pin: string,
   allow: readonly AccessRole[],
+  source?: string,
 ): Promise<SignInResult> {
   const tournament = await loadTournament(ctx, tournamentId);
   const now = Date.now();
 
-  if (tournament.pinLockedUntil && tournament.pinLockedUntil > now) {
-    return { ok: false, error: lockoutMessage(tournament.pinLockedUntil - now) };
+  // Everyone who sends no id shares one bucket. That bucket is throttled like
+  // any other, which is the point: an attacker who strips the id off their
+  // requests lands in the most crowded, most quickly exhausted queue there is.
+  const sourceHash = await hashPin(
+    typeof source === "string" && source.trim() !== "" ? source.trim() : "anonymous",
+    tournament.pinSalt,
+  );
+  const record = await ctx.db
+    .query("pinAttempts")
+    .withIndex("by_source", (q) => q.eq("tournamentId", tournamentId).eq("sourceHash", sourceHash))
+    .unique();
+
+  if (record?.lockedUntil && record.lockedUntil > now) {
+    return { ok: false, error: lockoutMessage(record.lockedUntil - now, "device") };
   }
+  if (tournament.pinLockedUntil && tournament.pinLockedUntil > now) {
+    return { ok: false, error: lockoutMessage(tournament.pinLockedUntil - now, "tournament") };
+  }
+
+  /**
+   * What this source has already spent. A lockout that has run out wipes the
+   * slate, and so does a long quiet spell: the counter is there to slow a run
+   * of guesses, not to hold a grudge against somebody who mistyped last week.
+   */
+  const spent = record && !record.lockedUntil && now - record.updatedAt < SOURCE_LOCKOUT_MS
+    ? record
+    : null;
 
   const candidate = await hashPin(typeof pin === "string" ? pin : "", tournament.pinSalt);
   let matched: AccessRole | null = null;
@@ -183,17 +235,38 @@ export async function attemptSignIn(
   }
 
   if (!matched) {
-    const failed = (tournament.failedPinAttempts ?? 0) + 1;
+    const sourceFailed = (spent?.failed ?? 0) + 1;
+    const sourceLocked = sourceFailed >= SOURCE_MAX_ATTEMPTS;
+    // The quota is what stops one person locking a tournament: past their
+    // share, their wrong guesses are still counted against them and no longer
+    // counted against the tournament.
+    const contributed = spent?.contributed ?? 0;
+    const contributes = contributed < SOURCE_QUOTA;
+    const attempt = {
+      tournamentId,
+      sourceHash,
+      failed: sourceFailed,
+      contributed: contributed + (contributes ? 1 : 0),
+      lockedUntil: sourceLocked ? now + SOURCE_LOCKOUT_MS : undefined,
+      updatedAt: now,
+    };
+    if (record) await ctx.db.patch(record._id, attempt);
+    else await ctx.db.insert("pinAttempts", attempt);
+
+    const failed = (tournament.failedPinAttempts ?? 0) + (contributes ? 1 : 0);
     const locked = failed >= MAX_ATTEMPTS;
-    await ctx.db.patch(tournamentId, {
-      failedPinAttempts: failed,
-      pinLockedUntil: locked ? now + LOCKOUT_MS : undefined,
-    });
+    if (contributes) {
+      await ctx.db.patch(tournamentId, {
+        failedPinAttempts: failed,
+        pinLockedUntil: locked ? now + LOCKOUT_MS : undefined,
+      });
+    }
     // The guess that trips the lock says so. Telling it apart from the guesses
     // before it costs an attacker nothing they could not learn by trying once
     // more, and saves an organiser who mistyped from guessing at why the right
     // PIN suddenly stopped working.
-    if (locked) return { ok: false, error: lockoutMessage(LOCKOUT_MS) };
+    if (sourceLocked) return { ok: false, error: lockoutMessage(SOURCE_LOCKOUT_MS, "device") };
+    if (locked) return { ok: false, error: lockoutMessage(LOCKOUT_MS, "tournament") };
     return {
       ok: false,
       error:
@@ -203,6 +276,7 @@ export async function attemptSignIn(
     };
   }
 
+  if (record) await ctx.db.delete(record._id);
   if (tournament.failedPinAttempts || tournament.pinLockedUntil) {
     await ctx.db.patch(tournamentId, { failedPinAttempts: 0, pinLockedUntil: undefined });
   }

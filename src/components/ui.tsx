@@ -114,13 +114,16 @@ export function Alert({
   kind,
   children,
 }: {
-  kind: "error" | "info" | "success";
+  kind: "error" | "warning" | "info" | "success";
   children: ReactNode;
 }) {
   return (
     <p
       role={kind === "error" ? "alert" : "status"}
-      className={cx("note m-0", kind === "error" && "note-accent")}
+      // A warning carries the same accent as an error — it is the thing on the
+      // screen that most wants reading — but it is not announced as an alert,
+      // because nothing the reader just did has failed.
+      className={cx("note m-0", (kind === "error" || kind === "warning") && "note-accent")}
     >
       {children}
     </p>

@@ -182,3 +182,138 @@ describe("a group-stage withdrawal after two matches have been played", () => {
     expect(qualified.filter((id) => groupA.has(id as string))).toHaveLength(2);
   }, 180_000);
 });
+
+describe("a group withdrawal from every finishing position", () => {
+  /**
+   * The demotion in `fillKnockoutFromGroups` sorts a withdrawn entrant to the
+   * bottom of their group's table no matter how many matches they had already
+   * won. That rule only has one interesting way to go wrong: getting the
+   * *cutoff* wrong. So this runs the same group of four to a clean, unambiguous
+   * table — a transitive 3-0/2-1/1-2/0-3 result with no tie to break — once for
+   * each place the withdrawing entrant could have finished in.
+   *
+   * Whichever seat withdraws, the four players who did not pull out keep the
+   * same order among themselves (lower index beats higher index, always), so
+   * the two who qualify once the withdrawal is applied are always the two
+   * strongest survivors. What changes case to case is only whether getting
+   * there required promoting somebody (1st and 2nd both held a qualifying
+   * place before they withdrew) or changed nothing at all (3rd and 4th never
+   * held one to begin with).
+   */
+  async function runQualificationPositionCase(quitterIndex: number, beatsCount: number) {
+    const created = await client.mutation(api.tournaments.create, {
+      name: `Qualification Position ${quitterIndex} ${Date.now()}`,
+      venue: "Ahmedabad",
+      startDate: "2026-11-14",
+      pin: PIN,
+      isPublic: false,
+    });
+    const tournamentId = created.tournamentId;
+    const token = created.token;
+
+    const eventId = await client.mutation(api.events.create, {
+      tournamentId,
+      token,
+      name: "Group Singles",
+      teamSize: 1,
+      format: "groups_knockout",
+      scoring: DEFAULT_SCORING,
+      thirdPlace: false,
+      groupCount: 1,
+      advancePerGroup: 2,
+      doubleRound: false,
+    });
+    await client.mutation(api.entries.addMany, {
+      eventId,
+      token,
+      text: ["Player 0", "Player 1", "Player 2", "Player 3"].join("\n"),
+    });
+    await client.mutation(api.draws.generate, { eventId, token, randomise: false });
+
+    const entries = await client.query(api.entries.listByEvent, { eventId });
+    const idOf = (i: number) => entries.find((e) => e.playerOne === `Player ${i}`)!._id;
+
+    const opponents = [0, 1, 2, 3].filter((i) => i !== quitterIndex);
+    // The weakest `beatsCount` opponents are the ones the quitter beats, so
+    // the survivors keep their relative order regardless of how the withdrawing
+    // entrant's own results are set.
+    const beatenByQuitter = new Set(opponents.slice(opponents.length - beatsCount));
+
+    /** Lower index always beats higher index, except where the quitter is involved. */
+    function winnerOf(i: number, j: number): number {
+      const [lo, hi] = i < j ? [i, j] : [j, i];
+      if (lo === quitterIndex) return beatenByQuitter.has(hi) ? lo : hi;
+      if (hi === quitterIndex) return beatenByQuitter.has(lo) ? hi : lo;
+      return lo;
+    }
+
+    async function play(i: number, j: number) {
+      const matches = await client.query(api.matches.listByEvent, { eventId });
+      const match = matches.find(
+        (m) =>
+          m.stage === "group" &&
+          ((m.aId === idOf(i) && m.bId === idOf(j)) || (m.aId === idOf(j) && m.bId === idOf(i))),
+      )!;
+      const winner = winnerOf(i, j);
+      await client.mutation(api.matches.setScore, {
+        matchId: match._id,
+        token,
+        sets: match.aId === idOf(winner) ? WIN : LOSS,
+      });
+    }
+
+    // The quitter's own three matches are played out first, fixing the
+    // finishing position they would have held.
+    for (const opponent of opponents) await play(quitterIndex, opponent);
+
+    await client.mutation(api.entries.update, {
+      entryId: idOf(quitterIndex),
+      token,
+      withdrawn: true,
+    });
+
+    // Then the matches among the three survivors settle the rest of the
+    // table — the last of these is what triggers the knockout to fill.
+    const [a, b, c] = opponents;
+    await play(a, b);
+    await play(a, c);
+    await play(b, c);
+
+    const matches = await client.query(api.matches.listByEvent, { eventId });
+    expect(matches.filter((m) => m.stage === "group").every(settled)).toBe(true);
+
+    const final = matches.find((m) => m.stage === "knockout" && m.round === 0)!;
+    expect(final.aId).not.toBeNull();
+    expect(final.bId).not.toBeNull();
+
+    // Whoever withdrew, the two strongest survivors take the two places.
+    const [expectedFirst, expectedSecond] = opponents; // already ascending = strongest first
+    const qualified = new Set([final.aId, final.bId]);
+    expect(qualified).toEqual(new Set([idOf(expectedFirst), idOf(expectedSecond)]));
+    expect(qualified.has(idOf(quitterIndex))).toBe(false);
+
+    const quitterEntry = (await client.query(api.entries.listByEvent, { eventId })).find(
+      (e) => e._id === idOf(quitterIndex),
+    )!;
+    expect(quitterEntry.withdrawn).toBe(true);
+
+    await client.mutation(api.events.remove, { eventId, token, force: true });
+    await client.mutation(api.tournaments.remove, { tournamentId, token });
+  }
+
+  it("promotes the third-placed entrant when the group's leader withdraws", async () => {
+    await runQualificationPositionCase(0, 3);
+  }, 120_000);
+
+  it("promotes the third-placed entrant when the runner-up withdraws, right at the cutoff", async () => {
+    await runQualificationPositionCase(1, 2);
+  }, 120_000);
+
+  it("changes nothing when a third-placed entrant withdraws — they held no qualifying place", async () => {
+    await runQualificationPositionCase(2, 1);
+  }, 120_000);
+
+  it("changes nothing when the last-placed entrant withdraws", async () => {
+    await runQualificationPositionCase(3, 0);
+  }, 120_000);
+});

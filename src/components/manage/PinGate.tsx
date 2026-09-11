@@ -7,6 +7,7 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Button, Field, Input } from "@/components/ui";
 import { errorMessage, type AccessRole } from "@/lib/useSession";
+import { clientId } from "@/lib/clientId";
 
 /**
  * Asks for a PIN and trades it with the server for a session token.
@@ -38,7 +39,7 @@ export function PinGate({
     setError(null);
     setBusy(true);
     try {
-      const result = await signIn({ tournamentId, pin, role });
+      const result = await signIn({ tournamentId, pin, role, client: clientId() });
       if (!result.ok || !result.token) {
         setError(result.error ?? "That PIN was not recognised.");
         return;
@@ -59,7 +60,7 @@ export function PinGate({
         {referee
           ? "Enter the referee PIN the organiser gave you. It lets you enter scores and nothing else."
           : "The PIN unlocks the console for this device only."}{" "}
-        After eight wrong tries the tournament locks for ten minutes.
+        After five wrong tries this device is locked out for fifteen minutes.
       </p>
 
       <form onSubmit={submit} className="flex flex-col gap-4">

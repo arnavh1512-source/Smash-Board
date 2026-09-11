@@ -20,8 +20,11 @@ a score entered by the organiser appears on every open scoreboard without a refr
 - **Referees** — a second, scoring-only PIN opens `/t/<slug>/score`. Referees enter results and
   nothing else: they cannot touch the draw, the entrants, the settings or the tournament itself.
 - **Order of play** — every category laid out on one timetable across the courts the hall has,
-  with a guaranteed rest between a player's matches and another category filling the court while
-  they take it. Readable in time order or court by court, by organiser and public alike.
+  planned to keep a rest between a player's matches and let another category fill the court while
+  they take it. Readable in time order or court by court, by organiser and public alike. The plan
+  is a snapshot of the draw as it stood when it was made: a withdrawal, a reordered category, a
+  moved start date or a knockout slot that only just learned who is playing it all mark it stale,
+  and the console says so until it is regenerated.
 
 ## What the draw refuses to let you undo by accident
 
@@ -51,22 +54,38 @@ has not happened yet and throwing away something that has.
 
 ## How access works
 
-A tournament is guarded by a PIN chosen when it is created, and optionally by a second,
-scoring-only referee PIN. Neither is stored: only a SHA-256 hash of `salt + pin` is kept, and the
-salt is generated per tournament.
+A tournament is guarded by a PIN chosen when it is created. An organiser may also set a second,
+optional referee PIN that unlocks score entry and nothing else, so an umpire can be handed a phone
+without also being handed the power to redraw the event or delete it. Neither PIN is stored: only a
+SHA-256 hash of `salt + pin` is kept, and the salt is generated per tournament.
 
-The PIN is accepted at exactly one endpoint, `tournaments.signIn`, which trades it for a
-short-lived signed session token. Every other mutation takes the token and never sees the PIN.
-That is not tidiness, it is correctness: a Convex mutation is a transaction, so a guard that
-recorded a wrong guess and then threw would have that write rolled back by its own throw and the
-failure counter could never climb. `signIn` returns `{ ok: false, error }` for a wrong PIN instead
-of throwing, so eight wrong guesses — across both doors, sharing one counter — really do lock the
-tournament for ten minutes.
+A PIN is accepted at exactly one endpoint, `tournaments.signIn`, which trades it for a short-lived
+signed session token. Every other mutation takes the token and never sees the PIN. That is not
+tidiness, it is correctness: a Convex mutation is a transaction, so a guard that recorded a wrong
+guess and then threw would have that write rolled back by its own throw, and the failure counter
+could never climb. `signIn` returns `{ ok: false, error }` for a wrong PIN instead of throwing, so
+the counter reliably commits and the lockouts below actually fire.
+
+Wrong guesses are throttled in two layers:
+
+- **Per source.** The console keeps a random id for itself in the browser and sends it with every
+  attempt. Five wrong guesses from the same source lock that source out for fifteen minutes — but
+  it proves nothing and can be rotated, so this layer is weak by design; a caller that sends no id
+  shares one crowded bucket with everyone else who didn't.
+- **Per tournament.** Underneath that, a single source may only spend three of the tournament's
+  eight tolerated wrong guesses — past that, its guesses still count against the source but stop
+  counting against the tournament. Eight failures — across both PINs, sharing one counter, spent by
+  a crowd rather than one person — lock the whole tournament out for ten minutes. That is what
+  actually stops one bored person with a browser tab shutting a hall full of players out of their
+  own scores.
+
+A lockout that runs out clears itself, and so does a long enough quiet spell, so a mistyped PIN
+from months ago never counts against anyone today.
 
 The token is stateless: an HMAC over the tournament, the role, the expiry and that role's PIN hash,
 keyed by the tournament's own salt. Nothing is stored server-side, tokens last twelve hours, and
-changing a PIN silently invalidates every token issued for it while leaving the other role's alone.
-On the client the token lives in `sessionStorage` and dies with the tab.
+changing a PIN silently invalidates every token issued for that role while leaving the other role's
+tokens alone. On the client the token lives in `sessionStorage` and dies with the tab.
 
 ## Layout
 
@@ -107,7 +126,7 @@ suite runs in under a second.
 ```bash
 npm run lint          # ESLint, zero warnings tolerated
 npx tsc --noEmit      # type check
-npm test              # 187 unit tests over scoring, draws, standings, scheduling and formatting
+npm test              # 206 unit tests over scoring, draws, standings, scheduling and formatting
 npm run test:coverage # same run with a v8 coverage report (80% floor, enforced)
 npm run test:integration  # runs against a live Convex deployment; see the note below
 npm run test:e2e      # Playwright, drives the real UI against a dev server it starts itself
@@ -123,15 +142,18 @@ tournaments, so run them against a development deployment, never production.
 | `tests/draw.test.ts` | bracket sizing, seeding, byes, round names, round robin, group snaking |
 | `tests/standings.test.ts` | the BWF tiebreak chain, walkovers, scores that no longer parse |
 | `tests/display.test.ts` | entrant names, scoring summaries, match ordering |
+| `tests/identity.test.ts` | folding a name typed several ways into one person, so rest and duplicate checks key on the human rather than the spelling |
 | `tests/schedule.test.ts` | court packing, rest between matches, the court-count cap, clock maths |
 | `tests/scheduleStress.test.ts` | a whole day: three categories, two courts, byes, a group stage, a third-place match, players in two draws |
+| `tests/scheduleBasis.test.ts` | the fingerprint that tells a fresh order of play from a stale one — dates, withdrawals, reordered categories, a knockout slot that only just learned who's in it |
 | `tests/roundScoring.test.ts` | the semi-final and final scoring overrides |
 | `tests/integration/backend.test.ts` | the tournament lifecycle against a real deployment |
-| `tests/integration/referee.test.ts` | the sign-in door, token forgery, what a referee may and may not do, the lockout |
+| `tests/integration/referee.test.ts` | the sign-in door, token forgery, what a referee may and may not do, the per-source and per-tournament lockouts |
 | `tests/integration/scenarios.test.ts` | a 20-entrant knockout and a 16-entrant group stage played end to end, plus the guards above |
-| `tests/integration/withdrawal.test.ts` | a player who wins two group matches and then pulls out, and the knockout that has to fill without them |
+| `tests/integration/withdrawal.test.ts` | a player who wins two group matches and then pulls out, and the knockout that has to fill without them, from every finishing position in the group |
+| `tests/integration/schedule.test.ts` | the order of play going stale after a withdrawal, a reordered category or a moved start date, and a knockout slot whose court booking is only trustworthy once the group stage feeding it is settled |
 | `tests/e2e/home.spec.ts` | the landing page, its metadata and structured data, the theme memory, the phone layout |
-| `tests/e2e/auth.spec.ts` | the PIN gate, the eight-try lockout, a session that survives a reload, what a stranger may read |
+| `tests/e2e/auth.spec.ts` | the PIN gate, the five-try per-device lockout, a session that survives a reload, what a stranger may read, the referee's own door |
 | `tests/e2e/organiser.spec.ts` | a category run from empty to a published result, doubles pairs, bulk entry |
 | `tests/e2e/referee.spec.ts` | an umpire scoring from their own link, and the door closing when the PIN is removed |
 | `tests/e2e/public.spec.ts` | the three public views, the shareable link, a link that points at nothing |

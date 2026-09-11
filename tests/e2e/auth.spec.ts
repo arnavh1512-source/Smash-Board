@@ -6,7 +6,7 @@ import { createTournament, formAlert } from "./helpers";
  * the lockout that never fired because the mutation that counted the attempt
  * threw, rolling back the very counter it had just written.
  *
- * These run serially within the file — the attempt counter is per tournament,
+ * These run serially within the file — the attempt counters are per tournament,
  * and each test still owns its own tournament, so serial is about keeping the
  * timing assertions honest rather than about isolation.
  */
@@ -29,26 +29,28 @@ test.describe("sign-in", () => {
     await expect(page.getByText("Organiser console", { exact: true })).toBeVisible();
   });
 
-  test("locks the tournament after eight wrong tries", async ({ page }) => {
+  test("shuts a device out after five wrong tries", async ({ page }) => {
     const tournament = await createTournament(page);
     await page.getByRole("button", { name: "Lock" }).click();
 
     const field = page.getByLabel("Organiser PIN");
     const submit = page.getByRole("button", { name: "Unlock the console" });
 
-    // Seven wrong guesses: refused, but the door is still open.
-    for (let attempt = 1; attempt <= 7; attempt += 1) {
+    // Four wrong guesses: refused, but the door is still open.
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
       await field.fill(`wrong-${attempt}`);
       await submit.click();
       await expect(formAlert(page)).toHaveText("Wrong organiser PIN.");
     }
 
-    // The eighth trips the lock, and says so rather than repeating "wrong PIN"
-    // at an organiser who would otherwise keep trying.
-    await field.fill("wrong-8");
+    // The fifth shuts this browser out, and says so rather than repeating
+    // "wrong PIN" at an organiser who would otherwise keep trying. The
+    // tournament itself is untouched — one bored person with a browser tab
+    // must not be able to lock a hall full of players out of their scores.
+    await field.fill("wrong-5");
     await submit.click();
     await expect(formAlert(page)).toHaveText(
-      /Too many wrong PINs\. Try again in \d+ minutes?\./,
+      /Too many wrong PINs from this device\. Try again in \d+ minutes?\./,
     );
 
     // The heart of C1: the counter is written by a mutation that must not throw,
@@ -57,7 +59,7 @@ test.describe("sign-in", () => {
     await field.fill(tournament.pin);
     await submit.click();
     await expect(formAlert(page)).toHaveText(
-      /Too many wrong PINs\. Try again in \d+ minutes?\./,
+      /Too many wrong PINs from this device\. Try again in \d+ minutes?\./,
     );
     await expect(page.getByText("Organiser console", { exact: true })).toHaveCount(0);
   });

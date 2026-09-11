@@ -50,8 +50,18 @@ async function rejects(call: Promise<unknown>): Promise<string> {
   throw new Error("Expected the call to be rejected, but it succeeded.");
 }
 
-function signIn(id: Id<"tournaments">, pin: string, role?: "organiser" | "referee") {
-  return client.mutation(api.tournaments.signIn, { tournamentId: id, pin, role });
+function signIn(
+  id: Id<"tournaments">,
+  pin: string,
+  role?: "organiser" | "referee",
+  source?: string,
+) {
+  return client.mutation(api.tournaments.signIn, {
+    tournamentId: id,
+    pin,
+    role,
+    client: source,
+  });
 }
 
 /** Sign in and insist it worked, for the setup steps that assume a good PIN. */
@@ -372,16 +382,48 @@ describe("withdrawing the referee PIN", () => {
 
 describe("the lockout", () => {
   /**
-   * The failure counter is shared across both PINs on purpose, so a guesser
-   * cannot buy a fresh set of tries by switching which door they knock on.
+   * Two layers, and the interesting property is how they fit together.
    *
-   * This test deliberately locks a throwaway tournament and then cannot delete
-   * it — a locked tournament refuses even the correct organiser PIN, which is
-   * the whole point. It is created unlisted, and the lock expires on its own
-   * after ten minutes, so the record is left behind rather than orphaned
-   * forever. That is the cost of covering this path honestly.
+   * The tournament-wide lock is the last line: eight wrong guesses and the
+   * PINs stop working for ten minutes. On its own that is also an attack,
+   * because the sign-in door is public — so each source is throttled first,
+   * and a single source may only ever spend three of the tournament's eight.
+   *
+   * These tests deliberately lock throwaway tournaments and then cannot delete
+   * one of them — a locked tournament refuses even the correct organiser PIN,
+   * which is the whole point. They are created unlisted and the locks expire on
+   * their own, so a record is left behind rather than orphaned forever. That is
+   * the cost of covering this path honestly.
    */
-  it("counts wrong guesses at both doors towards one lockout", async () => {
+  it("throttles one source long before it can lock the tournament", async () => {
+    const scratch = await makeTournament("Referee Source Throttle");
+    const attacker = `attacker-${Date.now()}`;
+
+    // The reviewer's scenario: eight wrong PINs from one client.
+    const errors: string[] = [];
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const result = await signIn(scratch.tournamentId, WRONG_PIN, "organiser", attacker);
+      expect(result.ok).toBe(false);
+      errors.push(result.error ?? "");
+    }
+
+    // The first four are ordinary refusals; the fifth shuts this client out and
+    // every one after it is refused without ever reaching the PIN check.
+    for (const error of errors.slice(0, 4)) expect(error).not.toMatch(/Try again in/i);
+    for (const error of errors.slice(4)) expect(error).toMatch(/from this device/i);
+
+    // And the tournament is untouched: the organiser signs in from their own
+    // device as if nothing had happened, which is the property that matters.
+    const organiser = await signIn(scratch.tournamentId, PIN, "organiser", "organiser-phone");
+    expect(organiser.ok).toBe(true);
+
+    await client.mutation(api.tournaments.remove, {
+      tournamentId: scratch.tournamentId,
+      token: scratch.token,
+    });
+  }, 180_000);
+
+  it("still locks the tournament when the wrong guesses come from a crowd", async () => {
     const scratch = await makeTournament("Referee Lockout");
     await client.mutation(api.tournaments.setRefereePin, {
       tournamentId: scratch.tournamentId,
@@ -389,25 +431,31 @@ describe("the lockout", () => {
       refereePin: REFEREE_PIN,
     });
 
-    // Four at the organiser door, three at the referee door: seven wrong
-    // guesses in total, one short of the limit.
-    for (let attempt = 0; attempt < 7; attempt++) {
-      const result = await signIn(
-        scratch.tournamentId,
-        WRONG_PIN,
-        attempt < 4 ? "organiser" : "referee",
-      );
-      expect(result.ok).toBe(false);
-      expect(result.error).not.toMatch(/Try again in/i);
+    // Three wrong guesses each from three different devices, split across both
+    // doors: the counter is shared, so a guesser cannot buy a fresh set of
+    // tries by switching which door they knock on.
+    const errors: string[] = [];
+    for (const [index, source] of ["one", "two", "three"].entries()) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const result = await signIn(
+          scratch.tournamentId,
+          WRONG_PIN,
+          index === 0 ? "organiser" : "referee",
+          `device-${source}-${Date.now()}`,
+        );
+        expect(result.ok).toBe(false);
+        errors.push(result.error ?? "");
+      }
     }
 
-    // The eighth tips it over, whichever door it comes through.
-    expect((await signIn(scratch.tournamentId, WRONG_PIN, "referee")).error).toMatch(
-      /Too many wrong PINs/i,
-    );
+    // Seven of the nine were ordinary refusals; the eighth tipped the
+    // tournament over and the ninth met a locked door.
+    expect(errors.filter((error) => /for this tournament/i.test(error))).toHaveLength(2);
 
-    // Locked means locked: the right PIN is refused too.
-    expect((await signIn(scratch.tournamentId, PIN)).error).toMatch(/Try again in/i);
+    // Locked means locked: the right PIN is refused too, from anywhere.
+    expect((await signIn(scratch.tournamentId, PIN, "organiser", "fresh")).error).toMatch(
+      /Try again in/i,
+    );
 
     // A token minted before the lock still works. The lock guards the door, not
     // the organiser who is already inside and may need to fix what went wrong.
@@ -416,20 +464,22 @@ describe("the lockout", () => {
       token: scratch.token,
       name: "Locked but reachable",
     });
-  }, 120_000);
+  }, 180_000);
 
   it("forgives the earlier guesses once a correct PIN lands", async () => {
+    const device = `forgiven-${Date.now()}`;
     for (let attempt = 0; attempt < 3; attempt++) {
-      expect((await signIn(tournamentId, WRONG_PIN)).ok).toBe(false);
+      expect((await signIn(tournamentId, WRONG_PIN, "organiser", device)).ok).toBe(false);
     }
-    expect((await signIn(tournamentId, REFEREE_PIN, "referee")).ok).toBe(true);
+    expect((await signIn(tournamentId, REFEREE_PIN, "referee", device)).ok).toBe(true);
 
-    // The counter is back at zero, so seven more wrong guesses still do not lock.
-    for (let attempt = 0; attempt < 7; attempt++) {
-      const result = await signIn(tournamentId, WRONG_PIN);
+    // The counter is back at zero, so four more wrong guesses from that device
+    // still do not shut it out.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const result = await signIn(tournamentId, WRONG_PIN, "organiser", device);
       expect(result.ok).toBe(false);
       expect(result.error).not.toMatch(/Try again in/i);
     }
-    expect((await signIn(tournamentId, PIN)).ok).toBe(true);
-  }, 120_000);
+    expect((await signIn(tournamentId, PIN, "organiser", device)).ok).toBe(true);
+  }, 180_000);
 });

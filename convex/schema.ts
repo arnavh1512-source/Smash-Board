@@ -24,6 +24,14 @@ export const scheduleValidator = v.object({
   courts: v.number(),
   /** When the planner last ran, so the console can say the plan is stale. */
   generatedAt: v.union(v.number(), v.null()),
+  /**
+   * Fingerprint of the draw the plan was built from, written by
+   * `scheduleBasis`. Recomputing it on read is how the app knows the plan has
+   * been overtaken by a withdrawal, a walkover, a decided group, a reordered
+   * category or a changed start date. Absent on plans made before the check
+   * existed, which are treated as needing a regeneration.
+   */
+  basis: v.optional(v.string()),
 });
 
 export const matchStatusValidator = v.union(
@@ -156,4 +164,33 @@ export default defineSchema({
     .index("by_event", ["eventId"])
     .index("by_tournament", ["tournamentId"])
     .index("by_event_stage", ["eventId", "stage"]),
+
+  /**
+   * Wrong PIN guesses, counted per source as well as per tournament.
+   *
+   * The tournament-wide lockout on its own is a weapon an attacker can turn
+   * around: anyone who knows the tournament link can post eight wrong PINs and
+   * shut the organiser out of their own console in the middle of a match. So a
+   * source is throttled long before it can spend the tournament's budget, and
+   * each source may only push that budget so far — locking the tournament out
+   * has to take a crowd, not one bored person with a browser tab.
+   *
+   * A source is whatever the caller identifies itself as; the console sends a
+   * random id it keeps in the browser. It is not proof of anything and it can
+   * be rotated, which is why the tournament-wide lock stays underneath.
+   */
+  pinAttempts: defineTable({
+    tournamentId: v.id("tournaments"),
+    /** SHA-256 of the tournament salt and the caller's id. Never the id. */
+    sourceHash: v.string(),
+    /** Consecutive wrong guesses from this source. */
+    failed: v.number(),
+    /** How many of them were allowed to count towards the tournament lock. */
+    contributed: v.number(),
+    /** Epoch millis until which this source is refused outright. */
+    lockedUntil: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_source", ["tournamentId", "sourceHash"])
+    .index("by_tournament", ["tournamentId"]),
 });

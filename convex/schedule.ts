@@ -1,16 +1,17 @@
 import { ConvexError, v } from "convex/values";
-import { mutation } from "./_generated/server";
+import { mutation, query, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireOrganiser } from "./lib/auth";
 import {
   ScheduleError,
   courtName,
   parseClockTime,
-  personKey,
   planSchedule,
+  scheduleBasis,
   toClockTime,
   type PlannerMatch,
 } from "../src/lib/schedule";
+import { personKey } from "../src/lib/identity";
 import { totalKnockoutRounds } from "./lib/progression";
 
 /**
@@ -72,6 +73,97 @@ function feedersFor(
     .map((m) => m._id);
 }
 
+/**
+ * Everything the planner reads, in the shape the planner reads it.
+ *
+ * Shared by the generator and by the staleness check, so the fingerprint is
+ * taken over exactly the input the plan was built from rather than over a
+ * second, drifting description of it.
+ */
+async function plannerInput(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+): Promise<{ matches: Doc<"matches">[]; planner: PlannerMatch[] }> {
+  const events = await ctx.db
+    .query("events")
+    .withIndex("by_tournament", (q) => q.eq("tournamentId", tournamentId))
+    .collect();
+  const matches = await ctx.db
+    .query("matches")
+    .withIndex("by_tournament", (q) => q.eq("tournamentId", tournamentId))
+    .collect();
+  const entries = await ctx.db
+    .query("entries")
+    .withIndex("by_tournament", (q) => q.eq("tournamentId", tournamentId))
+    .collect();
+
+  // One entry can hold two people, and one person can hold several entries
+  // across the categories. The planner owes its rest to the people.
+  const peopleOf = new Map<Id<"entries">, string[]>(
+    entries.map((entry) => [
+      entry._id,
+      [entry.playerOne, entry.playerTwo]
+        .filter((name): name is string => typeof name === "string" && name.trim() !== "")
+        .map(personKey),
+    ]),
+  );
+
+  const orderOf = new Map(events.map((event) => [event._id, event.order] as const));
+  const byEvent = new Map<Id<"events">, Doc<"matches">[]>();
+  for (const match of matches) {
+    const list = byEvent.get(match.eventId) ?? [];
+    list.push(match);
+    byEvent.set(match.eventId, list);
+  }
+
+  const planner: PlannerMatch[] = matches.map((match) => {
+    const eventMatches = byEvent.get(match.eventId) ?? [];
+    const groupMatchIds = eventMatches.filter((m) => m.stage === "group").map((m) => m._id);
+    const sides = [match.aId, match.bId]
+      .filter((id): id is Id<"entries"> => id !== null)
+      .flatMap((id) => peopleOf.get(id) ?? [id as string]);
+    return {
+      id: match._id,
+      eventId: match.eventId,
+      eventOrder: orderOf.get(match.eventId) ?? 0,
+      // Group matches all sit at round 0 of their event; knockout rounds
+      // follow the group stage, so they are pushed past it.
+      round: match.stage === "group" ? match.round : match.round + 1000,
+      slot: match.slot,
+      sides,
+      feeders: feedersFor(match, eventMatches, groupMatchIds),
+      skip: needsNoCourt(match),
+    };
+  });
+
+  return { matches, planner };
+}
+
+/**
+ * Whether a generated order of play still matches the tournament it was built
+ * from. Public: a spectator looking at an out-of-date timetable is the person
+ * this warning is for.
+ */
+export const status = query({
+  args: { tournamentId: v.id("tournaments") },
+  returns: v.union(
+    v.null(),
+    v.object({ generatedAt: v.union(v.number(), v.null()), stale: v.boolean() }),
+  ),
+  handler: async (ctx, args) => {
+    const tournament = await ctx.db.get(args.tournamentId);
+    if (!tournament?.schedule) return null;
+    const { planner } = await plannerInput(ctx, args.tournamentId);
+    const basis = scheduleBasis(tournament.startDate ?? "", planner);
+    return {
+      generatedAt: tournament.schedule.generatedAt,
+      // A plan made before this check existed carries no fingerprint. It cannot
+      // be shown to be current, so it is reported as needing a regeneration.
+      stale: tournament.schedule.basis !== basis,
+    };
+  },
+});
+
 export const generate = mutation({
   args: {
     tournamentId: v.id("tournaments"),
@@ -88,61 +180,10 @@ export const generate = mutation({
       throw new ConvexError("Set the tournament start date before planning the order of play.");
     }
 
-    const events = await ctx.db
-      .query("events")
-      .withIndex("by_tournament", (q) => q.eq("tournamentId", args.tournamentId))
-      .collect();
-    const matches = await ctx.db
-      .query("matches")
-      .withIndex("by_tournament", (q) => q.eq("tournamentId", args.tournamentId))
-      .collect();
-
+    const { matches, planner } = await plannerInput(ctx, args.tournamentId);
     if (matches.length === 0) {
       throw new ConvexError("Generate a draw first — there is nothing to schedule yet.");
     }
-
-    const entries = await ctx.db
-      .query("entries")
-      .withIndex("by_tournament", (q) => q.eq("tournamentId", args.tournamentId))
-      .collect();
-    // One entry can hold two people, and one person can hold several entries
-    // across the categories. The planner owes its rest to the people.
-    const peopleOf = new Map<Id<"entries">, string[]>(
-      entries.map((entry) => [
-        entry._id,
-        [entry.playerOne, entry.playerTwo]
-          .filter((name): name is string => typeof name === "string" && name.trim() !== "")
-          .map(personKey),
-      ]),
-    );
-
-    const orderOf = new Map(events.map((event) => [event._id, event.order] as const));
-    const byEvent = new Map<Id<"events">, Doc<"matches">[]>();
-    for (const match of matches) {
-      const list = byEvent.get(match.eventId) ?? [];
-      list.push(match);
-      byEvent.set(match.eventId, list);
-    }
-
-    const planner: PlannerMatch[] = matches.map((match) => {
-      const eventMatches = byEvent.get(match.eventId) ?? [];
-      const groupMatchIds = eventMatches.filter((m) => m.stage === "group").map((m) => m._id);
-      const sides = [match.aId, match.bId]
-        .filter((id): id is Id<"entries"> => id !== null)
-        .flatMap((id) => peopleOf.get(id) ?? [id as string]);
-      return {
-        id: match._id,
-        eventId: match.eventId,
-        eventOrder: orderOf.get(match.eventId) ?? 0,
-        // Group matches all sit at round 0 of their event; knockout rounds
-        // follow the group stage, so they are pushed past it.
-        round: match.stage === "group" ? match.round : match.round + 1000,
-        slot: match.slot,
-        sides,
-        feeders: feedersFor(match, eventMatches, groupMatchIds),
-        skip: needsNoCourt(match),
-      };
-    });
 
     let slots;
     try {
@@ -191,6 +232,7 @@ export const generate = mutation({
         restMinutes: args.restMinutes,
         courts: args.courts,
         generatedAt: now,
+        basis: scheduleBasis(tournament.startDate, planner),
       },
       updatedAt: now,
     });

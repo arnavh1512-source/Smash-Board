@@ -7,6 +7,7 @@ import type { Doc, Id } from "../../../convex/_generated/dataModel";
 import { Alert, Badge, Button, Field, Input, Section, Textarea, cx } from "@/components/ui";
 import { errorMessage } from "@/lib/useSession";
 import { entryName } from "@/lib/display";
+import { duplicatePeople } from "@/lib/identity";
 
 /** The paste box explains itself differently for a pair than for one player. */
 function bulkHint(teamSize: number): string {
@@ -355,6 +356,11 @@ export function EntryManager({
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"one" | "bulk">("one");
   const active = entries.filter((entry) => !entry.withdrawn).length;
+  // Two entrants of one category under the same name: either somebody has been
+  // entered twice, or two different players share a name. Both need sorting out
+  // before the draw, because everything downstream — the order of play above
+  // all — treats one name as one human being.
+  const clashes = duplicatePeople(entries.filter((entry) => !entry.withdrawn));
 
   return (
     <div>
@@ -384,6 +390,18 @@ export function EntryManager({
             </button>
           ))}
         </div>
+
+        {clashes.length > 0 ? (
+          <Alert kind="warning">
+            <strong>The same name is entered more than once.</strong>{" "}
+            {clashes
+              .map((clash) => `${clash.spellings.join(" / ")} (${clash.count} entrants)`)
+              .join(", ")}
+            . The app reads one name as one player, so these entrants are treated as the same
+            person and will never be put on court at the same time. If they really are different
+            people, tell them apart — add an initial or a club — before the draw is made.
+          </Alert>
+        ) : null}
 
         {event.drawGeneratedAt ? (
           <Alert kind="info">

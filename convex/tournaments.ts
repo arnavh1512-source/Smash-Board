@@ -257,6 +257,13 @@ export const signIn = mutation({
     tournamentId: v.id("tournaments"),
     pin: v.string(),
     role: v.optional(v.union(v.literal("organiser"), v.literal("referee"))),
+    /**
+     * A random id the browser keeps for itself, so repeated wrong guesses can
+     * be throttled at their source before they eat into the tournament-wide
+     * lockout. It is self-declared and rotatable, so it is a speed bump rather
+     * than an authority — see `attemptSignIn`.
+     */
+    client: v.optional(v.string()),
   },
   returns: v.object({
     ok: v.boolean(),
@@ -267,7 +274,7 @@ export const signIn = mutation({
   handler: async (ctx, args) => {
     const allow: AccessRole[] =
       args.role === "referee" ? ["organiser", "referee"] : ["organiser"];
-    const result = await attemptSignIn(ctx, args.tournamentId, args.pin, allow);
+    const result = await attemptSignIn(ctx, args.tournamentId, args.pin, allow, args.client);
     return result.ok
       ? { ok: true, token: result.token, role: result.role }
       : { ok: false, error: result.error };

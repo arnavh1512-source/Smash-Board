@@ -77,6 +77,21 @@ export function ScoreDialog({
   // The same question the server asks before it refuses a walkover, so the
   // buttons go quiet instead of throwing an error the organiser has to read.
   const played = hasPlayedResult(match);
+  /**
+   * Three different jobs wear the same dialog, and they are not equally
+   * reversible. Picking up a match mid-game is ordinary work. Rewriting a
+   * result that has already been published is not: the winner may already have
+   * been moved into the next round, and saving will move somebody else there
+   * instead. So the dialog says which of the three the organiser is doing
+   * before they touch anything.
+   */
+  const decided = match.status === "completed" || match.status === "walkover";
+  const inProgress = !decided && match.sets.length > 0;
+  const heading = decided
+    ? "Correct the score"
+    : inProgress
+      ? "Continue scoring"
+      : "Enter the score";
 
   async function run(action: () => Promise<unknown>, close = false) {
     setError(null);
@@ -128,13 +143,13 @@ export function ScoreDialog({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Enter the score"
+      aria-label={heading}
       className="fixed inset-0 z-50 flex items-end justify-center bg-[color-mix(in_srgb,#201e1d_55%,transparent)] sm:items-center sm:p-4"
     >
       <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto border border-[var(--color-divider)] bg-[var(--color-bg)]">
         <header className="rule-b2 flex items-start gap-3 bg-[var(--color-surface)] px-4 py-3.5">
           <div className="min-w-0 flex-1">
-            <h6 className="m-0">Enter the score</h6>
+            <h6 className="m-0">{heading}</h6>
             <p className="m-0 mt-1 truncate text-[11px] opacity-55">
               {event.name} · {scoringSummary(scoring)}
             </p>
@@ -145,6 +160,14 @@ export function ScoreDialog({
         </header>
 
         <div className="flex flex-col gap-4 px-4 py-4">
+          {decided ? (
+            <Alert kind="warning">
+              <strong>This match already has a result.</strong> Saving replaces it. Whoever the
+              change makes the winner is carried into the next round, and anybody the old result
+              had sent through is taken back out of it.
+            </Alert>
+          ) : null}
+
           {!bothDecided ? (
             <Alert kind="info">
               Both sides must be decided before a score can be entered. Finish the earlier matches
@@ -252,7 +275,7 @@ export function ScoreDialog({
                 run(() => setScore({ matchId: match._id, token, sets: cleanSets() }), true)
               }
             >
-              {busy ? "Saving…" : "Save score"}
+              {busy ? "Saving…" : decided ? "Save correction" : "Save score"}
             </Button>
             <Button
               variant="secondary"
