@@ -29,22 +29,48 @@ const DELIMITERS: readonly Delimiter[] = [",", "\t", ";"];
  *
  * A file downloaded from Google Sheets is comma-separated; a selection copied
  * out of the browser and pasted straight in is tab-separated; a sheet from a
- * machine set to a European locale is semicolon-separated. Counting on the
- * first non-empty line is enough to tell them apart, because a header row has
- * one separator per column and rarely anything else.
+ * machine set to a European locale is semicolon-separated.
+ *
+ * Counting separators on the raw first line is not enough to tell them apart,
+ * because a quoted answer may hold any of them: a tab-separated sheet whose
+ * first cell is "Shah, Arnav, Jr" has more commas in it than tabs, and a
+ * counting detector would read the whole file as commas and hand the parser
+ * one field per row. So each candidate is actually parsed instead, and the one
+ * that yields a table - several columns, and the same number of them on every
+ * row - wins. A separator that is really just punctuation inside a field
+ * produces ragged rows, which is exactly what this measures.
  */
 export function detectDelimiter(text: string): Delimiter {
-  const firstLine = text.split(/\r?\n/).find((line) => line.trim() !== "") ?? "";
   let best: Delimiter = ",";
-  let bestCount = 0;
+  let bestScore = { columns: 0, agreement: 0 };
   for (const candidate of DELIMITERS) {
-    const count = firstLine.split(candidate).length - 1;
-    if (count > bestCount) {
+    const score = tabulates(text, candidate);
+    if (
+      score.columns > 1 &&
+      (score.agreement > bestScore.agreement ||
+        (score.agreement === bestScore.agreement && score.columns > bestScore.columns))
+    ) {
       best = candidate;
-      bestCount = count;
+      bestScore = score;
     }
   }
   return best;
+}
+
+/**
+ * How well this separator reads the text as a table.
+ *
+ * `columns` is what the first row splits into and `agreement` is the share of
+ * rows that agree with it. Only the head of the file is read: a response sheet
+ * with a thousand answers in it is settled by its first few rows, and the
+ * detector runs on every keystroke in the paste box.
+ */
+function tabulates(text: string, delimiter: Delimiter): { columns: number; agreement: number } {
+  const rows = parseDelimited(text, delimiter).slice(0, 20);
+  if (rows.length === 0) return { columns: 0, agreement: 0 };
+  const columns = rows[0].length;
+  const agreeing = rows.filter((row) => row.length === columns).length;
+  return { columns, agreement: agreeing / rows.length };
 }
 
 /**

@@ -781,6 +781,22 @@ describe("importing entrants from a form response sheet", () => {
     expect(outcome.skipped[0]).toMatch(/already entered/i);
   });
 
+  it("refuses a pair that is one person typed into both boxes", async () => {
+    // The browser preview already catches this, and this is the request that
+    // did not come from the browser: a stale tab, a second organiser, or a
+    // call made straight against the deployment.
+    const outcome = await client.mutation(api.entries.importRows, {
+      eventId: importPairsId,
+      token,
+      rows: [{ playerOne: "Rohan Mehta", playerTwo: "rohan   MEHTA" }],
+    });
+    expect(outcome.added).toBe(0);
+    expect(outcome.skipped[0]).toMatch(/same person twice/i);
+
+    const rows = await client.query(api.entries.listByEvent, { eventId: importPairsId });
+    expect(rows.some((row) => /rohan/i.test(row.playerOne))).toBe(false);
+  });
+
   it("needs the organiser PIN like every other way in", async () => {
     const message = await rejects(
       client.mutation(api.entries.importRows, {

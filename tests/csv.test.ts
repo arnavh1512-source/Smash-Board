@@ -40,6 +40,23 @@ describe("detectDelimiter", () => {
     expect(detectDelimiter("a;b;c\n1;2;3")).toBe(";");
   });
 
+  it("is not fooled by commas inside a quoted cell of a tab sheet", () => {
+    // Counting separators would read three commas and one tab and call this a
+    // CSV, handing the parser one field per row.
+    const text = [
+      '"Shah, Arnav, Jr"\tAhmedabad SC\t9876543210',
+      "Dev Patel\tNadiad BC\t9876500000",
+    ].join("\n");
+    expect(detectDelimiter(text)).toBe("\t");
+    expect(parseDelimited(text)[0]).toEqual(["Shah, Arnav, Jr", "Ahmedabad SC", "9876543210"]);
+  });
+
+  it("prefers the separator that gives every row the same number of columns", () => {
+    // Semicolons separate every row; the comma appears only inside one answer.
+    const text = ["name;club", "Anita Rao;Ahmedabad, Gujarat SC"].join("\n");
+    expect(detectDelimiter(text)).toBe(";");
+  });
+
   it("falls back to commas when there is only one column", () => {
     expect(detectDelimiter("Anita Rao\nPriya Shah")).toBe(",");
   });

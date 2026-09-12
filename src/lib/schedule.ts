@@ -131,11 +131,16 @@ export function scheduleBasis(startDate: string, matches: readonly PlannerMatch[
 }
 
 function assertOptions(options: ScheduleOptions): void {
-  if (!Number.isFinite(options.matchMinutes) || options.matchMinutes < 5 || options.matchMinutes > 240) {
-    throw new ScheduleError("A match slot must be between 5 and 240 minutes.");
+  // Whole minutes, not merely finite ones. Every time this planner produces is
+  // written as "YYYY-MM-DDTHH:MM", which has no room for a half minute: a 30.5
+  // minute slot would put the second match of the day at 09:30.5 and the
+  // formatter would print some other minute instead. A duration the timetable
+  // cannot represent is refused here rather than rounded away downstream.
+  if (!Number.isInteger(options.matchMinutes) || options.matchMinutes < 5 || options.matchMinutes > 240) {
+    throw new ScheduleError("A match slot must be a whole number of minutes, between 5 and 240.");
   }
-  if (!Number.isFinite(options.restMinutes) || options.restMinutes < 0 || options.restMinutes > 480) {
-    throw new ScheduleError("The rest period must be between 0 and 480 minutes.");
+  if (!Number.isInteger(options.restMinutes) || options.restMinutes < 0 || options.restMinutes > 480) {
+    throw new ScheduleError("The rest period must be a whole number of minutes, between 0 and 480.");
   }
   if (!Number.isInteger(options.courts) || options.courts < 1 || options.courts > 24) {
     throw new ScheduleError("Set between 1 and 24 courts.");

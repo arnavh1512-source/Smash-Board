@@ -308,3 +308,31 @@ describe("isTimestamp", () => {
     expect(isTimestamp("2028-02-29T09:00")).toBe(true);
   });
 });
+
+describe("whole-minute durations", () => {
+  const MATCHES: PlannerMatch[] = [
+    {
+      id: "m1",
+      eventId: "e1",
+      eventOrder: 0,
+      round: 0,
+      slot: 0,
+      sides: ["a", "b"],
+      feeders: [],
+      skip: false,
+    },
+  ];
+
+  it("refuses a match slot that is not a whole number of minutes", () => {
+    // The timetable is written as YYYY-MM-DDTHH:MM, which cannot hold 09:30.5.
+    expect(() => planSchedule(MATCHES, { ...OPTIONS, matchMinutes: 30.5 })).toThrow(ScheduleError);
+  });
+
+  it("refuses a rest period that is not a whole number of minutes", () => {
+    expect(() => planSchedule(MATCHES, { ...OPTIONS, restMinutes: 20.5 })).toThrow(ScheduleError);
+  });
+
+  it("still takes the whole numbers either side of them", () => {
+    expect(() => planSchedule(MATCHES, { ...OPTIONS, matchMinutes: 30, restMinutes: 20 })).not.toThrow();
+  });
+});

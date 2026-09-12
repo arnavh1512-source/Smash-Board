@@ -128,6 +128,22 @@ function assertPeopleFree(held: Map<string, Doc<"entries">>, names: readonly str
 }
 
 /**
+ * The same two questions, for the doors that skip a row instead of refusing.
+ *
+ * `assertPeopleFree` throws, which is right for the single form: there is one
+ * entrant and the organiser is looking at it. A pasted list and a form import
+ * carry on to the next row instead, so they need the answer as a reason rather
+ * than an exception - but they must not each ask it their own way, or the
+ * paste box and the importer end up disagreeing about who is the same person.
+ */
+function rowClash(taken: ReadonlySet<string>, names: readonly string[]): string | null {
+  const keys = names.map(personKey);
+  if (keys.some((key) => taken.has(key))) return "already entered";
+  if (new Set(keys).size !== keys.length) return "the same person twice";
+  return null;
+}
+
+/**
  * The invariant: once a draw exists, the field is closed.
  *
  * A bracket is built from the entrants who were in the category at the moment
@@ -305,16 +321,12 @@ export const addMany = mutation({
         skipped.push(`${line} (singles category — change it to doubles first)`);
         continue;
       }
-      const keys = players.map(personKey);
-      if (keys.some((key) => taken.has(key))) {
-        skipped.push(`${line} (already entered)`);
+      const clash = rowClash(taken, players);
+      if (clash) {
+        skipped.push(`${line} (${clash})`);
         continue;
       }
-      if (new Set(keys).size !== keys.length) {
-        skipped.push(`${line} (the same person twice)`);
-        continue;
-      }
-      for (const key of keys) taken.add(key);
+      for (const name of players) taken.add(personKey(name));
 
       await ctx.db.insert("entries", {
         tournamentId: event.tournamentId,
@@ -405,12 +417,17 @@ export const importRows = mutation({
         skipped.push(`${label} (singles category - change it to doubles first)`);
         continue;
       }
-      const keys = [personKey(playerOne), ...(partner ? [personKey(partner)] : [])];
-      if (keys.some((key) => taken.has(key))) {
-        skipped.push(`${label} (already entered)`);
+      const players = [playerOne, ...(partner ? [partner] : [])];
+      // The preview asks this too, but a preview is a courtesy and this is the
+      // rule: a stale tab, a second organiser, or a request that never went
+      // through the browser at all must not be able to enter one person as
+      // both halves of a pair.
+      const clash = rowClash(taken, players);
+      if (clash) {
+        skipped.push(`${label} (${clash})`);
         continue;
       }
-      for (const key of keys) taken.add(key);
+      for (const name of players) taken.add(personKey(name));
 
       await ctx.db.insert("entries", {
         tournamentId: event.tournamentId,
