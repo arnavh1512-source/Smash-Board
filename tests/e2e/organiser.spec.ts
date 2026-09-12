@@ -61,6 +61,7 @@ test.describe("organiser", () => {
     await addCategory(page, { name: "Mens Doubles", teamSize: 2 });
 
     await openTab(page, "Entrants");
+    await page.getByRole("button", { name: "One at a time" }).click();
     await expect(page.getByLabel("Player one").first()).toBeVisible();
     await expect(page.getByLabel("Player two").first()).toBeVisible();
 
@@ -75,6 +76,7 @@ test.describe("organiser", () => {
     await openTab(page, "Entrants");
 
     // Both fields are required, so a lone name cannot be submitted at all.
+    await page.getByRole("button", { name: "One at a time" }).click();
     await page.getByLabel("Player one").first().fill("Solo Tester");
     await page.getByRole("button", { name: "Add entrant" }).click();
     const partner = page.getByLabel("Player two").first();
@@ -110,6 +112,40 @@ test.describe("organiser", () => {
     await expect(page.getByText("Tara Bose / Ila Kaur", { exact: true })).toHaveCount(0);
   });
 
+  test("imports the entry list a Google Form collected", async ({ page }) => {
+    await createTournament(page);
+    await addCategory(page, { name: "Womens Doubles", teamSize: 2 });
+    await openTab(page, "Entrants");
+
+    // A real response sheet: a timestamp and an email nobody asked for, a club
+    // whose own name has a comma in it, one player who filled the form in
+    // twice, and one who left the partner box empty.
+    await page.getByLabel("Paste the form responses").fill(
+      [
+        "Timestamp,Email address,Your name,Partner's name,Club,Phone",
+        '12/09/2026 9:14,a@b.com,Anita Rao,Priya Shah,"Ahmedabad SC, Gujarat",9876543210',
+        "12/09/2026 9:20,c@d.com,Tara Bose,Sonal Desai,Nadiad BC,9876500000",
+        "12/09/2026 9:31,a@b.com,anita rao,priya shah,Ahmedabad SC,9876543210",
+        "12/09/2026 9:44,e@f.com,Meera Iyer,,Baroda,",
+      ].join("\n"),
+    );
+
+    // The preview says what will happen before anything is written, and the
+    // organiser can see which rows are not coming and why.
+    await expect(page.getByText(/2 rows ready to import/)).toBeVisible();
+    await expect(page.getByText(/2 will be skipped/)).toBeVisible();
+    await page.getByText(/Why 2 rows are being skipped/).click();
+    await expect(page.getByText(/already entered in this category/)).toBeVisible();
+    await expect(page.getByText(/a doubles category needs both names/)).toBeVisible();
+
+    await page.getByRole("button", { name: /Import 2 entrants/ }).click();
+    await expect(page.getByText(/Imported 2 entrants\./)).toBeVisible();
+
+    await expect(page.getByText("Anita Rao / Priya Shah", { exact: true })).toBeVisible();
+    await expect(page.getByText("Tara Bose / Sonal Desai", { exact: true })).toBeVisible();
+    await expect(page.getByText("Meera Iyer", { exact: true })).toHaveCount(0);
+  });
+
   test("closes the entry forms once the draw is made", async ({ page }) => {
     await createTournament(page);
     await addCategory(page, { name: "Mens Singles" });
@@ -127,6 +163,7 @@ test.describe("organiser", () => {
     await expect(page.getByText(/entries for this category are closed/i)).toBeVisible();
     await expect(page.getByRole("button", { name: "Add entrant" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Paste a list" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Form responses" })).toHaveCount(0);
     await expect(page.getByText("Rohan Mehta", { exact: false }).first()).toBeVisible();
   });
 

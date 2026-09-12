@@ -167,6 +167,9 @@ export async function openTab(page: Page, label: string): Promise<void> {
  * both, and a pair with one name is what the "Partner missing" badge is for.
  */
 export async function addEntrant(page: Page, one: string, two?: string): Promise<void> {
+  // The Entrants tab opens on the form import, which is where a real entry
+  // list comes from. Typing one name is the other tab.
+  await page.getByRole("button", { name: "One at a time" }).click();
   await page.getByLabel(two ? "Player one" : /Player (one|name)/).first().fill(one);
   if (two) await page.getByLabel("Player two").first().fill(two);
   await page.getByRole("button", { name: "Add entrant" }).click();

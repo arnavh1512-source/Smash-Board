@@ -7,7 +7,8 @@ import type { Doc, Id } from "../../../convex/_generated/dataModel";
 import { Alert, Badge, Button, Field, Input, Section, Textarea, cx } from "@/components/ui";
 import { errorMessage } from "@/lib/useSession";
 import { entryName } from "@/lib/display";
-import { duplicatePeople } from "@/lib/identity";
+import { duplicatePeople, personKey } from "@/lib/identity";
+import { FormImport } from "./FormImport";
 
 /** The paste box explains itself differently for a pair than for one player. */
 function bulkHint(teamSize: number): string {
@@ -354,13 +355,24 @@ export function EntryManager({
   token: string;
 }) {
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<"one" | "bulk">("one");
+  // Most tournaments now collect their entries on a Google Form, so the import
+  // is the door the organiser walks through; typing a name one at a time is
+  // what the walk-in and the correction need.
+  const [mode, setMode] = useState<"form" | "one" | "bulk">("form");
   const active = entries.filter((entry) => !entry.withdrawn).length;
   // Two entrants of one category under the same name: either somebody has been
   // entered twice, or two different players share a name. Both need sorting out
   // before the draw, because everything downstream — the order of play above
   // all — treats one name as one human being.
   const clashes = duplicatePeople(entries.filter((entry) => !entry.withdrawn));
+  // Everybody already in the category, withdrawn ones included: a form filled
+  // in twice by somebody who then pulled out is still the same person, and
+  // re-entering them would leave two rows for one player.
+  const existingKeys = entries.flatMap((entry) =>
+    [entry.playerOne, entry.playerTwo]
+      .filter((name): name is string => typeof name === "string" && name.trim() !== "")
+      .map(personKey),
+  );
 
   return (
     <div>
@@ -373,7 +385,7 @@ export function EntryManager({
         </div>
 
         <div className="flex" hidden={event.drawGeneratedAt !== null}>
-          {(["one", "bulk"] as const).map((option) => (
+          {(["form", "one", "bulk"] as const).map((option) => (
             <button
               key={option}
               type="button"
@@ -386,7 +398,11 @@ export function EntryManager({
                   : "border-b-[var(--color-divider)] opacity-55",
               )}
             >
-              {option === "one" ? "One at a time" : "Paste a list"}
+              {option === "form"
+                ? "Form responses"
+                : option === "one"
+                  ? "One at a time"
+                  : "Paste a list"}
             </button>
           ))}
         </div>
@@ -410,6 +426,14 @@ export function EntryManager({
             Seeds are fixed too — the bracket was built from the seeds as they stood and does not
             rearrange itself. To take a late entry, clear the draw and generate it again.
           </Alert>
+        ) : mode === "form" ? (
+          <FormImport
+            eventId={event._id}
+            teamSize={event.teamSize}
+            token={token}
+            existingKeys={existingKeys}
+            onError={setError}
+          />
         ) : mode === "one" ? (
           <AddEntryForm event={event} token={token} onError={setError} />
         ) : (

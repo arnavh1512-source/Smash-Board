@@ -14,8 +14,16 @@ a score entered by the organiser appears on every open scoreboard without a refr
 - **Draw formats** — knockout with seeding and byes, round robin (single or double), or groups
   feeding a knockout. Up to 32 groups, named the way a spreadsheet names columns: A to Z, then
   AA to AF.
-- **Entrants** — add one at a time or paste a whole list. Edit, seed, withdraw or remove; removing
-  an entrant scrubs them from the draw so no match points at a deleted row.
+- **Entrants** — import the response sheet from the Google Form that collected the entries, paste
+  a typed list, or add one player at a time. Edit, seed, withdraw or remove; removing an entrant
+  scrubs them from the draw so no match points at a deleted row. Once the draw is made the field
+  is closed: from then on an entrant withdraws rather than disappearing, and a late entry means
+  clearing the draw and making it again.
+- **Form imports** — paste or upload the sheet, and SmashBoard works out which column is the name,
+  the partner, the club and the phone number, then shows every row and what will happen to it
+  before anything is written. Commas and quotes inside an answer survive, a form filled in twice
+  imports the player once, and one form that collects the whole tournament can be filtered to the
+  category being imported.
 - **Results** — enter a score as each game finishes. Winners advance automatically, corrections
   ripple forward, and group tables re-sort in the BWF tiebreak order.
 - **Referees** — a second, scoring-only PIN opens `/t/<slug>/score`. Referees enter results and
@@ -150,6 +158,7 @@ tournaments, so run them against a development deployment, never production.
 | `tests/draw.test.ts` | bracket sizing, seeding, byes, round names, round robin, group snaking |
 | `tests/standings.test.ts` | the BWF tiebreak chain, walkovers, scores that no longer parse |
 | `tests/display.test.ts` | entrant names, scoring summaries, match ordering |
+| `tests/csv.test.ts` | reading a Google Forms sheet: quoted commas, tabs, a byte order mark, column guessing, duplicate submissions, category filtering |
 | `tests/identity.test.ts` | folding a name typed several ways into one person, so rest and duplicate checks key on the human rather than the spelling |
 | `tests/schedule.test.ts` | court packing, rest between matches, the court-count cap, clock maths |
 | `tests/hallCrowding.test.ts` | the hall limit: categories run in blocks, rest survives a block boundary, feeders stay in front, and the peak head count falls as the limit tightens |

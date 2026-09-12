@@ -3,6 +3,7 @@ import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireOrganiser } from "./lib/auth";
 import { applyWithdrawal } from "./lib/progression";
+import { personKey } from "../src/lib/identity";
 import type { MutationCtx } from "./_generated/server";
 
 const entryValidator = v.object({
@@ -245,6 +246,108 @@ export const addMany = mutation({
         playerTwo: event.teamSize === 2 ? players[1] : undefined,
         club: clean(clubPart, 80),
         phone: undefined,
+        seed: 0,
+        withdrawn: false,
+        createdAt: now + added,
+      });
+      added += 1;
+      room -= 1;
+    }
+
+    return { added, skipped };
+  },
+});
+
+/**
+ * Import entrants from a form response sheet.
+ *
+ * The paste box above takes a typed list, one entrant per line, and splits it
+ * on slashes and commas. A Google Forms sheet cannot go through it: a name may
+ * legitimately hold a comma, an answer may hold a slash, and the club and the
+ * phone number arrive in columns of their own rather than tacked onto the end
+ * of a line. Flattening all that into text only to split it apart again would
+ * lose exactly the entrants whose answers were unusual.
+ *
+ * So the browser does the parsing and the column mapping - it is the side that
+ * can show the organiser a preview and let them correct it - and sends rows
+ * that already say which field is which. The rules a row must satisfy are
+ * still checked here, because the browser is not where a rule is enforced.
+ */
+export const importRows = mutation({
+  args: {
+    eventId: v.id("events"),
+    token: v.string(),
+    rows: v.array(
+      v.object({
+        playerOne: v.string(),
+        playerTwo: v.optional(v.string()),
+        club: v.optional(v.string()),
+        phone: v.optional(v.string()),
+      }),
+    ),
+  },
+  returns: v.object({ added: v.number(), skipped: v.array(v.string()) }),
+  handler: async (ctx, args) => {
+    const event = await loadEventForOrganiser(ctx, args.eventId, args.token);
+    assertEntriesOpen(event);
+
+    const existing = await ctx.db
+      .query("entries")
+      .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+      .collect();
+    let room = MAX_ENTRIES_PER_EVENT - existing.length;
+
+    // The preview already skipped anybody who is here, but the sheet was
+    // parsed in a browser tab that may have been open for a while, and two
+    // organisers may be importing at once. The list is re-read at the moment
+    // of writing so a person cannot be entered twice by a stale preview.
+    const taken = new Set(
+      existing.flatMap((entry) =>
+        [entry.playerOne, entry.playerTwo]
+          .filter((name): name is string => typeof name === "string" && name.trim() !== "")
+          .map(personKey),
+      ),
+    );
+
+    const skipped: string[] = [];
+    let added = 0;
+    const now = Date.now();
+
+    for (const row of args.rows.slice(0, 300)) {
+      const playerOne = clean(row.playerOne, 80);
+      const partner = clean(row.playerTwo, 80);
+      const label = [playerOne, partner].filter(Boolean).join(" / ") || "(blank row)";
+
+      if (room <= 0) {
+        skipped.push(`${label} (category is full)`);
+        continue;
+      }
+      if (!playerOne) {
+        skipped.push(`${label} (no name)`);
+        continue;
+      }
+      if (event.teamSize === 2 && !partner) {
+        skipped.push(`${label} (needs exactly two players)`);
+        continue;
+      }
+      if (event.teamSize === 1 && partner) {
+        skipped.push(`${label} (singles category - change it to doubles first)`);
+        continue;
+      }
+      const keys = [personKey(playerOne), ...(partner ? [personKey(partner)] : [])];
+      if (keys.some((key) => taken.has(key))) {
+        skipped.push(`${label} (already entered)`);
+        continue;
+      }
+      for (const key of keys) taken.add(key);
+
+      await ctx.db.insert("entries", {
+        tournamentId: event.tournamentId,
+        eventId: args.eventId,
+        playerOne,
+        playerTwo: event.teamSize === 2 ? partner : undefined,
+        club: clean(row.club, 80),
+        phone: clean(row.phone, 32),
         seed: 0,
         withdrawn: false,
         createdAt: now + added,

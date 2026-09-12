@@ -636,6 +636,20 @@ describe("entries close when the draw is made", () => {
     expect(rows).toHaveLength(4);
   });
 
+  it("refuses a form import as well, so no door is left open", async () => {
+    const message = await rejects(
+      client.mutation(api.entries.importRows, {
+        eventId: closedId,
+        token,
+        rows: [{ playerOne: "Player Nine" }],
+      }),
+    );
+    expect(message).toMatch(/entries for this category are closed/i);
+
+    const rows = await client.query(api.entries.listByEvent, { eventId: closedId });
+    expect(rows).toHaveLength(4);
+  });
+
   it("opens again once the draw is cleared", async () => {
     await client.mutation(api.draws.clear, { eventId: closedId, token });
     await client.mutation(api.entries.add, { eventId: closedId, token, playerOne: "Player Nine" });
@@ -646,5 +660,140 @@ describe("entries close when the draw is made", () => {
 
   afterAll(async () => {
     await client.mutation(api.events.remove, { eventId: closedId, token });
+  }, 60_000);
+});
+
+
+/**
+ * Importing the sheet a Google Form filled in.
+ *
+ * The browser parses the sheet and maps the columns; these tests are about
+ * what the server does with the rows it is handed, which is where the rules
+ * that matter are enforced - a pair needs two people, a singles category
+ * refuses one, and nobody gets entered twice however many times they filled
+ * the form in.
+ */
+describe("importing entrants from a form response sheet", () => {
+  let importId: Id<"events">;
+  let importPairsId: Id<"events">;
+
+  beforeAll(async () => {
+    const common = {
+      tournamentId,
+      token,
+      format: "knockout" as const,
+      scoring: DEFAULT_SCORING,
+      thirdPlace: false,
+      groupCount: 2,
+      advancePerGroup: 2,
+      doubleRound: false,
+    };
+    importId = await client.mutation(api.events.create, {
+      ...common,
+      name: "Form Import Singles",
+      teamSize: 1,
+    });
+    importPairsId = await client.mutation(api.events.create, {
+      ...common,
+      name: "Form Import Doubles",
+      teamSize: 2,
+    });
+  }, 60_000);
+
+  it("takes the club and the phone number the form asked for", async () => {
+    const outcome = await client.mutation(api.entries.importRows, {
+      eventId: importId,
+      token,
+      rows: [
+        { playerOne: "Rohan Mehta", club: "Ahmedabad SC", phone: "9876543210" },
+        { playerOne: "Dev Patel" },
+      ],
+    });
+    expect(outcome).toEqual({ added: 2, skipped: [] });
+
+    const rows = await client.query(api.entries.listByEvent, { eventId: importId });
+    const rohan = rows.find((r) => r.playerOne === "Rohan Mehta")!;
+    expect(rohan.club).toBe("Ahmedabad SC");
+    // The public list never carries a phone number; the organiser reads it
+    // back through revealContact, which checks the PIN.
+    expect("phone" in rohan).toBe(false);
+    expect(await client.mutation(api.entries.revealContact, { entryId: rohan._id, token })).toBe(
+      "9876543210",
+    );
+  });
+
+  it("refuses to enter the same person twice, however the form was filled in", async () => {
+    // Somebody submits, panics, and submits again with different capitals.
+    const outcome = await client.mutation(api.entries.importRows, {
+      eventId: importId,
+      token,
+      rows: [
+        { playerOne: "rohan   MEHTA" },
+        { playerOne: "Kabir Shah" },
+        { playerOne: "Kabir Shah" },
+      ],
+    });
+    expect(outcome.added).toBe(1);
+    expect(outcome.skipped).toHaveLength(2);
+    expect(outcome.skipped.every((line) => /already entered/i.test(line))).toBe(true);
+
+    const rows = await client.query(api.entries.listByEvent, { eventId: importId });
+    expect(rows.filter((r) => /kabir/i.test(r.playerOne))).toHaveLength(1);
+  });
+
+  it("refuses a partner in a singles category rather than dropping the name", async () => {
+    const outcome = await client.mutation(api.entries.importRows, {
+      eventId: importId,
+      token,
+      rows: [{ playerOne: "Vivek Nair", playerTwo: "Ila Kaur" }],
+    });
+    expect(outcome.added).toBe(0);
+    expect(outcome.skipped[0]).toMatch(/singles category/i);
+  });
+
+  it("keeps both halves of a pair, and skips a row missing one", async () => {
+    const outcome = await client.mutation(api.entries.importRows, {
+      eventId: importPairsId,
+      token,
+      rows: [
+        { playerOne: "Anita Rao", playerTwo: "Priya Shah" },
+        { playerOne: "Meera Iyer" },
+        { playerOne: "Tara Bose", playerTwo: "Sonal Desai" },
+      ],
+    });
+    expect(outcome.added).toBe(2);
+    expect(outcome.skipped[0]).toMatch(/needs exactly two players/i);
+
+    const rows = await client.query(api.entries.listByEvent, { eventId: importPairsId });
+    expect(rows.map((r) => `${r.playerOne} / ${r.playerTwo}`).sort()).toEqual([
+      "Anita Rao / Priya Shah",
+      "Tara Bose / Sonal Desai",
+    ]);
+  });
+
+  it("will not let a pair reuse somebody already playing in the category", async () => {
+    const outcome = await client.mutation(api.entries.importRows, {
+      eventId: importPairsId,
+      token,
+      rows: [{ playerOne: "Ila Kaur", playerTwo: "priya shah" }],
+    });
+    expect(outcome.added).toBe(0);
+    expect(outcome.skipped[0]).toMatch(/already entered/i);
+  });
+
+  it("needs the organiser PIN like every other way in", async () => {
+    const message = await rejects(
+      client.mutation(api.entries.importRows, {
+        eventId: importId,
+        token: "not-a-token",
+        rows: [{ playerOne: "Gate Crasher" }],
+      }),
+    );
+    expect(message).toMatch(/pin|session|organiser/i);
+  });
+
+  afterAll(async () => {
+    await client.mutation(api.events.remove, { eventId: importId, token });
+    await client.mutation(api.events.remove, { eventId: importPairsId, token });
   }, 60_000);
 });
