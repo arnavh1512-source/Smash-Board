@@ -398,6 +398,22 @@ export function clockOf(timestamp: string): string {
 
 const STAMP = /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):([0-5]\d)$/;
 
+/**
+ * Is this a "YYYY-MM-DDTHH:MM" local timestamp naming a minute that exists?
+ *
+ * The shape alone is not enough. `new Date` is lenient - it rolls 2026-02-31
+ * forward into March rather than refusing it - so the date is read back out
+ * and compared with what was written. A timestamp that survives that is one
+ * the timetable, the day headings and the rest calculation can all rely on.
+ */
+export function isTimestamp(value: string): boolean {
+  if (!STAMP.test(value)) return false;
+  const date = new Date(`${value}:00`);
+  if (Number.isNaN(date.getTime())) return false;
+  const readBack = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  return readBack === value.slice(0, 10);
+}
+
 /** "Thu 11 Sep" from a "YYYY-MM-DDTHH:MM" timestamp, for a day heading. */
 export function dayOf(timestamp: string): string {
   // The shape has to be checked before Date sees it: the lenient parser turns

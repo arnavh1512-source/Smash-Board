@@ -6,6 +6,7 @@ import {
   DEFAULT_SCHEDULE,
   formatDuration,
   gapMinutes,
+  isTimestamp,
   parseClockTime,
   planSchedule,
   ScheduleError,
@@ -276,5 +277,34 @@ describe("clock helpers", () => {
   it("ships defaults that satisfy its own validation", () => {
     expect(() => planSchedule([], DEFAULT_SCHEDULE)).not.toThrow();
     expect(DEFAULT_SCHEDULE.restMinutes).toBe(30);
+  });
+});
+
+describe("isTimestamp", () => {
+  it("takes the shape a datetime-local field writes", () => {
+    expect(isTimestamp("2026-09-12T09:30")).toBe(true);
+    expect(isTimestamp("2026-09-12T00:00")).toBe(true);
+    expect(isTimestamp("2026-09-12T23:59")).toBe(true);
+  });
+
+  it("refuses anything that is not that shape", () => {
+    for (const value of ["tomorrow", "banana", "", "09:30", "2026-09-12", "2026-09-12T09:30:00"]) {
+      expect(isTimestamp(value)).toBe(false);
+    }
+  });
+
+  it("refuses an hour or a minute that does not exist", () => {
+    expect(isTimestamp("2026-09-12T24:00")).toBe(false);
+    expect(isTimestamp("2026-09-12T09:60")).toBe(false);
+  });
+
+  it("refuses a day the month does not have, which Date would roll forward", () => {
+    // `new Date("2026-02-31T09:00:00")` is 3 March, not an error, so the shape
+    // check alone would let a date that does not exist into the timetable.
+    expect(isTimestamp("2026-02-31T09:00")).toBe(false);
+    expect(isTimestamp("2026-04-31T09:00")).toBe(false);
+    expect(isTimestamp("2026-13-01T09:00")).toBe(false);
+    // A leap day that does exist still passes.
+    expect(isTimestamp("2028-02-29T09:00")).toBe(true);
   });
 });

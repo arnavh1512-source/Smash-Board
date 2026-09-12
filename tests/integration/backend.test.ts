@@ -797,3 +797,268 @@ describe("importing entrants from a form response sheet", () => {
     await client.mutation(api.events.remove, { eventId: importPairsId, token });
   }, 60_000);
 });
+
+/**
+ * One person, one place in a category.
+ *
+ * `personKey` decides whether two spellings are the same human being, and the
+ * scheduler rests people rather than registrations. Two entries for one person
+ * in the same category is therefore a player the planner will put on two courts
+ * at once, and a bracket line that can draw them against themselves. The rule
+ * has to hold at every door into the entry list: the single form, the paste
+ * box, the form import and the edit.
+ */
+describe("one person enters a category once", () => {
+  let onceId: Id<"events">;
+  let oncePairsId: Id<"events">;
+
+  beforeAll(async () => {
+    const common = {
+      tournamentId,
+      token,
+      format: "knockout" as const,
+      scoring: DEFAULT_SCORING,
+      thirdPlace: false,
+      groupCount: 2,
+      advancePerGroup: 2,
+      doubleRound: false,
+    };
+    onceId = await client.mutation(api.events.create, {
+      ...common,
+      name: "One Person Singles",
+      teamSize: 1,
+    });
+    oncePairsId = await client.mutation(api.events.create, {
+      ...common,
+      name: "One Person Doubles",
+      teamSize: 2,
+    });
+  }, 60_000);
+
+  it("refuses the same person typed again with different spacing and capitals", async () => {
+    await client.mutation(api.entries.add, { eventId: onceId, token, playerOne: "Rohan Mehta" });
+    const message = await rejects(
+      client.mutation(api.entries.add, { eventId: onceId, token, playerOne: "rohan   MEHTA" }),
+    );
+    expect(message).toMatch(/already entered/i);
+    // The refusal names the entry it clashes with, so the organiser can find it.
+    expect(message).toMatch(/Rohan Mehta/);
+
+    const rows = await client.query(api.entries.listByEvent, { eventId: onceId });
+    expect(rows.filter((row) => /rohan/i.test(row.playerOne))).toHaveLength(1);
+  });
+
+  it("counts a withdrawn entrant, because they are still in the draw", async () => {
+    const added = await client.mutation(api.entries.add, {
+      eventId: onceId,
+      token,
+      playerOne: "Kabir Shah",
+    });
+    await client.mutation(api.entries.update, { entryId: added, token, withdrawn: true });
+    const message = await rejects(
+      client.mutation(api.entries.add, { eventId: onceId, token, playerOne: "Kabir Shah" }),
+    );
+    expect(message).toMatch(/already entered/i);
+  });
+
+  it("skips the repeat when a pasted list is pasted twice", async () => {
+    const text = "Dev Patel\nVivek Nair";
+    const first = await client.mutation(api.entries.addMany, { eventId: onceId, token, text });
+    expect(first.added).toBe(2);
+
+    const second = await client.mutation(api.entries.addMany, { eventId: onceId, token, text });
+    expect(second.added).toBe(0);
+    expect(second.skipped).toHaveLength(2);
+    expect(second.skipped.every((line) => /already entered/i.test(line))).toBe(true);
+  });
+
+  it("refuses a pair that is one person entered as both halves", async () => {
+    const message = await rejects(
+      client.mutation(api.entries.add, {
+        eventId: oncePairsId,
+        token,
+        playerOne: "Anita Rao",
+        playerTwo: "anita  rao",
+      }),
+    );
+    expect(message).toMatch(/same person/i);
+  });
+
+  it("refuses a partner who is already playing with somebody else", async () => {
+    await client.mutation(api.entries.add, {
+      eventId: oncePairsId,
+      token,
+      playerOne: "Tara Bose",
+      playerTwo: "Sonal Desai",
+    });
+    const message = await rejects(
+      client.mutation(api.entries.add, {
+        eventId: oncePairsId,
+        token,
+        playerOne: "Meera Iyer",
+        playerTwo: "SONAL   desai",
+      }),
+    );
+    expect(message).toMatch(/already entered/i);
+  });
+
+  it("refuses an edit that renames somebody onto another entrant", async () => {
+    const rows = await client.query(api.entries.listByEvent, { eventId: onceId });
+    const dev = rows.find((row) => row.playerOne === "Dev Patel")!;
+    const message = await rejects(
+      client.mutation(api.entries.update, { entryId: dev._id, token, playerOne: "Vivek Nair" }),
+    );
+    expect(message).toMatch(/already entered/i);
+
+    // Their own name is not a clash with themselves: a typo fix still saves.
+    await client.mutation(api.entries.update, {
+      entryId: dev._id,
+      token,
+      playerOne: "Dev Patell",
+    });
+    const after = await client.query(api.entries.listByEvent, { eventId: onceId });
+    expect(after.find((row) => row._id === dev._id)!.playerOne).toBe("Dev Patell");
+  });
+
+  it("lets an edit that changes nothing about the name through", async () => {
+    const rows = await client.query(api.entries.listByEvent, { eventId: onceId });
+    const target = rows.find((row) => row.playerOne === "Vivek Nair")!;
+    await client.mutation(api.entries.update, { entryId: target._id, token, club: "Nadiad BC" });
+    const after = await client.query(api.entries.listByEvent, { eventId: onceId });
+    expect(after.find((row) => row._id === target._id)!.club).toBe("Nadiad BC");
+  });
+
+  it("lets the same person enter a different category", async () => {
+    // The rule is about one category, not the tournament: a player enters the
+    // singles and the doubles, which is the whole point of a mixed entry list.
+    await client.mutation(api.entries.add, {
+      eventId: oncePairsId,
+      token,
+      playerOne: "Rohan Mehta",
+      playerTwo: "Dev Patell",
+    });
+    const rows = await client.query(api.entries.listByEvent, { eventId: oncePairsId });
+    expect(rows.some((row) => row.playerOne === "Rohan Mehta")).toBe(true);
+  });
+
+  afterAll(async () => {
+    await client.mutation(api.events.remove, { eventId: onceId, token });
+    await client.mutation(api.events.remove, { eventId: oncePairsId, token });
+  }, 60_000);
+});
+
+/**
+ * A result is corrected the same way in both directions.
+ *
+ * Turning a played score into a walkover already needs a reset first. The
+ * reverse has to need one too, or the correction workflow is asymmetric and a
+ * walkover can be typed over with no trace that the match was ever awarded.
+ */
+describe("a walkover is corrected the same way a score is", () => {
+  let awardId: Id<"events">;
+  let awarded: Id<"matches">;
+
+  beforeAll(async () => {
+    awardId = await client.mutation(api.events.create, {
+      tournamentId,
+      token,
+      name: "Walkover Symmetry",
+      teamSize: 1,
+      format: "knockout",
+      scoring: DEFAULT_SCORING,
+      thirdPlace: false,
+      groupCount: 2,
+      advancePerGroup: 2,
+      doubleRound: false,
+    });
+    for (const name of ["Wo One", "Wo Two", "Wo Three", "Wo Four"]) {
+      await client.mutation(api.entries.add, { eventId: awardId, token, playerOne: name });
+    }
+    await client.mutation(api.draws.generate, { eventId: awardId, token, randomise: false });
+    const matches = await client.query(api.matches.listByEvent, { eventId: awardId });
+    const semi = matches.find((match) => match.round === 0 && match.aId && match.bId)!;
+    await client.mutation(api.matches.setWalkover, {
+      matchId: semi._id,
+      token,
+      winnerId: semi.aId,
+    });
+    awarded = semi._id;
+  }, 60_000);
+
+  it("refuses a played score on a match that was awarded", async () => {
+    const message = await rejects(
+      client.mutation(api.matches.setScore, {
+        matchId: awarded,
+        token,
+        sets: [
+          { a: 21, b: 15 },
+          { a: 21, b: 19 },
+        ],
+      }),
+    );
+    expect(message).toMatch(/walkover/i);
+    expect(message).toMatch(/reset/i);
+
+    const after = await client.query(api.matches.listByEvent, { eventId: awardId });
+    const match = after.find((row) => row._id === awarded)!;
+    expect(match.status).toBe("walkover");
+    expect(match.sets).toEqual([]);
+  });
+
+  it("takes the score once the walkover has been reset", async () => {
+    await client.mutation(api.matches.reset, { matchId: awarded, token });
+    await client.mutation(api.matches.setScore, {
+      matchId: awarded,
+      token,
+      sets: [
+        { a: 21, b: 15 },
+        { a: 21, b: 19 },
+      ],
+    });
+    const after = await client.query(api.matches.listByEvent, { eventId: awardId });
+    expect(after.find((row) => row._id === awarded)!.status).toBe("completed");
+  });
+
+  it("still refuses a walkover over a played score, the other way round", async () => {
+    const matches = await client.query(api.matches.listByEvent, { eventId: awardId });
+    const played = matches.find((row) => row._id === awarded)!;
+    const message = await rejects(
+      client.mutation(api.matches.setWalkover, {
+        matchId: awarded,
+        token,
+        winnerId: played.aId,
+      }),
+    );
+    expect(message).toMatch(/reset/i);
+  });
+
+  it("refuses a start time that is not a real date and time", async () => {
+    for (const when of ["tomorrow", "2026-99-99T90:90", "2026-02-31T09:30", "09:30"]) {
+      const message = await rejects(
+        client.mutation(api.matches.setDetails, { matchId: awarded, token, scheduledAt: when }),
+      );
+      expect(message).toMatch(/date and time/i);
+    }
+  });
+
+  it("takes the shape the planner writes, and takes a blank to clear it", async () => {
+    await client.mutation(api.matches.setDetails, {
+      matchId: awarded,
+      token,
+      scheduledAt: "2026-09-12T09:30",
+      court: "Court 2",
+    });
+    let after = await client.query(api.matches.listByEvent, { eventId: awardId });
+    expect(after.find((row) => row._id === awarded)!.scheduledAt).toBe("2026-09-12T09:30");
+
+    await client.mutation(api.matches.setDetails, { matchId: awarded, token, scheduledAt: "" });
+    after = await client.query(api.matches.listByEvent, { eventId: awardId });
+    expect(after.find((row) => row._id === awarded)!.scheduledAt).toBeUndefined();
+  });
+
+  afterAll(async () => {
+    // The category ends the run with a played result in it, which is exactly
+    // what the deletion barrier refuses without a confirmation.
+    await client.mutation(api.events.remove, { eventId: awardId, token, force: true });
+  }, 60_000);
+});

@@ -68,6 +68,66 @@ async function assertSeedFree(
 }
 
 /**
+ * The invariant: inside one category, a person enters once.
+ *
+ * `personKey` is the app's one rule for deciding whether two names are the
+ * same human being, and everything downstream already believes it: the
+ * scheduler rests a person, not a registration, so "Rohan Mehta" and
+ * "Rohan   MEHTA" entered twice in the same category are one player the
+ * planner will happily put on two courts at the same minute, and one bracket
+ * line that draws them against themselves.
+ *
+ * The rule has to hold at every door into the entry list - the single form,
+ * the paste box, the form import and the edit - because a rule enforced in
+ * three places out of four is not a rule. This returns who holds each name so
+ * the callers that add one entrant can say whose entry it clashes with, and
+ * the callers that add many can skip the row and carry on.
+ */
+function peopleIn(
+  siblings: readonly Doc<"entries">[],
+  exceptId?: Id<"entries">,
+): Map<string, Doc<"entries">> {
+  const held = new Map<string, Doc<"entries">>();
+  for (const entry of siblings) {
+    if (entry._id === exceptId) continue;
+    for (const name of [entry.playerOne, entry.playerTwo]) {
+      if (typeof name !== "string" || name.trim() === "") continue;
+      const key = personKey(name);
+      if (!held.has(key)) held.set(key, entry);
+    }
+  }
+  return held;
+}
+
+/** The name for an entrant, as the console shows it. */
+function entryLabel(entry: Doc<"entries">): string {
+  return entry.playerTwo ? `${entry.playerOne} / ${entry.playerTwo}` : entry.playerOne;
+}
+
+/**
+ * Refuse a name that is already in this category, saying where it already is.
+ *
+ * Withdrawn entrants count. Somebody who pulled out is still in the draw as a
+ * walkover, and entering them again under the same name would put one person
+ * on both sides of the bracket.
+ */
+function assertPeopleFree(held: Map<string, Doc<"entries">>, names: readonly string[]): void {
+  for (const name of names) {
+    const holder = held.get(personKey(name));
+    if (holder) {
+      throw new ConvexError(
+        `${name} is already entered in this category as ${entryLabel(holder)}. One person enters a category once.`,
+      );
+    }
+  }
+  // A pair typed as the same person twice is the same clash, one row earlier.
+  const keys = names.map(personKey);
+  if (new Set(keys).size !== keys.length) {
+    throw new ConvexError("Both halves of the pair are the same person.");
+  }
+}
+
+/**
  * The invariant: once a draw exists, the field is closed.
  *
  * A bracket is built from the entrants who were in the category at the moment
@@ -170,6 +230,8 @@ export const add = mutation({
       throw new ConvexError(`A category holds at most ${MAX_ENTRIES_PER_EVENT} entrants.`);
     }
 
+    assertPeopleFree(peopleIn(existing), [playerOne, ...(playerTwo ? [playerTwo] : [])]);
+
     const seed = Math.max(0, Math.min(args.seed ?? 0, 64));
     await assertSeedFree(ctx, args.eventId, seed);
 
@@ -204,6 +266,10 @@ export const addMany = mutation({
       .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
       .collect();
     let room = MAX_ENTRIES_PER_EVENT - existing.length;
+    // Same rule as the single form and the form import: a person enters once.
+    // A pasted list is retyped or re-pasted more often than any other door, so
+    // the second paste of the same list adds nobody rather than everybody.
+    const taken = new Set(peopleIn(existing).keys());
 
     const lines = args.text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 300);
     const skipped: string[] = [];
@@ -239,6 +305,17 @@ export const addMany = mutation({
         skipped.push(`${line} (singles category — change it to doubles first)`);
         continue;
       }
+      const keys = players.map(personKey);
+      if (keys.some((key) => taken.has(key))) {
+        skipped.push(`${line} (already entered)`);
+        continue;
+      }
+      if (new Set(keys).size !== keys.length) {
+        skipped.push(`${line} (the same person twice)`);
+        continue;
+      }
+      for (const key of keys) taken.add(key);
+
       await ctx.db.insert("entries", {
         tournamentId: event.tournamentId,
         eventId: args.eventId,
@@ -301,13 +378,7 @@ export const importRows = mutation({
     // parsed in a browser tab that may have been open for a while, and two
     // organisers may be importing at once. The list is re-read at the moment
     // of writing so a person cannot be entered twice by a stale preview.
-    const taken = new Set(
-      existing.flatMap((entry) =>
-        [entry.playerOne, entry.playerTwo]
-          .filter((name): name is string => typeof name === "string" && name.trim() !== "")
-          .map(personKey),
-      ),
-    );
+    const taken = new Set(peopleIn(existing).keys());
 
     const skipped: string[] = [];
     let added = 0;
@@ -418,6 +489,24 @@ export const update = mutation({
       }
       patch.playerTwo = event?.teamSize === 2 ? partner : undefined;
     }
+    // An edit is a door into the entry list like any other: renaming Kabir Shah
+    // to Rohan Mehta in a category Rohan is already in makes the same two
+    // entries for one person that the add guard exists to prevent. Only the
+    // names that actually changed are checked, so re-saving a club or a phone
+    // number does not trip over the entrant's own name.
+    if (patch.playerOne !== undefined || patch.playerTwo !== undefined) {
+      const after = [
+        (patch.playerOne as string | undefined) ?? entry.playerOne,
+        (patch.playerTwo as string | undefined) ??
+          (args.playerTwo === undefined ? entry.playerTwo : undefined),
+      ].filter((name): name is string => typeof name === "string" && name.trim() !== "");
+      const siblings = await ctx.db
+        .query("entries")
+        .withIndex("by_event", (q) => q.eq("eventId", entry.eventId))
+        .collect();
+      assertPeopleFree(peopleIn(siblings, entry._id), after);
+    }
+
     if (args.club !== undefined) patch.club = clean(args.club, 80);
     if (args.phone !== undefined) patch.phone = clean(args.phone, 32);
     const category = await ctx.db.get(entry.eventId);

@@ -13,6 +13,7 @@ import {
 } from "./lib/progression";
 import { evaluateMatch, ScoringError, type SetScore } from "../src/lib/scoring";
 import { hasPlayedResult } from "../src/lib/results";
+import { isTimestamp } from "../src/lib/schedule";
 
 const matchValidator = v.object({
   _id: v.id("matches"),
@@ -130,6 +131,18 @@ export const setScore = mutation({
     if (!match.aId || !match.bId) {
       throw new ConvexError("Both sides must be decided before a score can be entered.");
     }
+    // The mirror of the guard in `setWalkover`. Correcting a result is a
+    // deliberate two-step move - reset, then enter the right thing - and the
+    // rule has to run both ways or it is not a rule: a walkover that can be
+    // typed over with a score would let a match that was awarded to somebody
+    // turn into a played one with no trace that it had ever been awarded, and
+    // whoever was advanced by the walkover would be moved on by a different
+    // route than the one that put them there.
+    if (match.status === "walkover") {
+      throw new ConvexError(
+        "This match was awarded as a walkover. Reset it before entering a played score.",
+      );
+    }
 
     // The closing rounds may be played to different rules, so the scores are
     // judged against this match's own configuration rather than the category's.
@@ -238,7 +251,16 @@ export const setDetails = mutation({
     const patch: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.court !== undefined) patch.court = args.court.trim().slice(0, 40) || undefined;
     if (args.scheduledAt !== undefined) {
-      patch.scheduledAt = args.scheduledAt.trim().slice(0, 40) || undefined;
+      // The planner writes these, and the order of play, the day headings and
+      // the rest calculation all read them back by their shape. A hand-typed
+      // "tomorrow" would not throw anywhere - it would quietly sort to the top
+      // of the timetable and count as no rest at all - so the shape is checked
+      // at the door instead of trusted downstream.
+      const when = args.scheduledAt.trim();
+      if (when && !isTimestamp(when)) {
+        throw new ConvexError("The time must be a real date and time, like 2026-09-12T09:30.");
+      }
+      patch.scheduledAt = when || undefined;
     }
     if (args.status !== undefined) {
       if (args.status === "completed" || args.status === "walkover") {
