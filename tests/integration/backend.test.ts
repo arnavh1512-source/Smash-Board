@@ -401,3 +401,56 @@ describe("doubles entrants keep both names", () => {
     await client.mutation(api.events.remove, { eventId: doublesId, token });
   }, 60_000);
 });
+
+describe("event settings", () => {
+  it("refuses a negative or fractional order", async () => {
+    const negative = await rejects(
+      client.mutation(api.events.update, { eventId, token, order: -1 }),
+    );
+    expect(negative).toMatch(/order/i);
+
+    const fractional = await rejects(
+      client.mutation(api.events.update, { eventId, token, order: 1.5 }),
+    );
+    expect(fractional).toMatch(/order/i);
+  });
+
+  it("locks the closing-round scoring rules once a semi-final is on court, even with no sets yet", async () => {
+    const lockId = await client.mutation(api.events.create, {
+      tournamentId,
+      token,
+      name: "Scoring Lock Test",
+      teamSize: 1,
+      format: "knockout",
+      scoring: DEFAULT_SCORING,
+      semiFinalScoring: DEFAULT_SCORING,
+      thirdPlace: false,
+      groupCount: 2,
+      advancePerGroup: 2,
+      doubleRound: false,
+    });
+
+    await client.mutation(api.entries.addMany, {
+      eventId: lockId,
+      token,
+      text: ["Player A", "Player B", "Player C", "Player D"].join("\n"),
+    });
+    await client.mutation(api.draws.generate, { eventId: lockId, token, randomise: false });
+
+    const matches = await client.query(api.matches.listByEvent, { eventId: lockId });
+    const semi = matches.find((m) => m.round === 0)!;
+
+    // Putting the match on court with no sets yet is exactly how the UI marks
+    // a semi-final "live" before either side has scored a point.
+    await client.mutation(api.matches.setScore, { matchId: semi._id, token, sets: [] });
+    const live = await client.query(api.matches.listByEvent, { eventId: lockId });
+    expect(live.find((m) => m._id === semi._id)!.status).toBe("live");
+
+    const message = await rejects(
+      client.mutation(api.events.update, { eventId: lockId, token, semiFinalScoring: null }),
+    );
+    expect(message).toMatch(/already been played/i);
+
+    await client.mutation(api.events.remove, { eventId: lockId, token });
+  });
+});

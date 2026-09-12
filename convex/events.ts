@@ -97,7 +97,7 @@ async function assertRoundUnplayed(
   const played = knockout.some(
     (m) =>
       totalRounds - 1 - m.round === fromEnd &&
-      (m.sets.length > 0 || m.winnerId !== null),
+      (m.status === "live" || m.sets.length > 0 || m.winnerId !== null),
   );
   if (played) {
     throw new ConvexError(
@@ -260,7 +260,12 @@ export const update = mutation({
       assertUnlocked(event, "playing each group twice");
       patch.doubleRound = args.doubleRound;
     }
-    if (args.order !== undefined) patch.order = args.order;
+    if (args.order !== undefined) {
+      if (!Number.isInteger(args.order) || args.order < 0) {
+        throw new ConvexError("Order must be a non-negative whole number.");
+      }
+      patch.order = args.order;
+    }
 
     await ctx.db.patch(args.eventId, patch);
     await ctx.db.patch(event.tournamentId, { updatedAt: Date.now() });
