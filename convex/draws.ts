@@ -12,6 +12,12 @@ import {
   type DraftMatch,
 } from "../src/lib/draw";
 import { hasPlayedResult } from "../src/lib/results";
+import {
+  capacityMessage,
+  matchesForDraw,
+  MAX_MATCHES_PER_DRAW,
+  MAX_MATCHES_PER_TOURNAMENT,
+} from "../src/lib/capacity";
 
 /**
  * Build (or rebuild) the draw for one category.
@@ -43,6 +49,31 @@ export const generate = mutation({
     const active = allEntries.filter((e) => !e.withdrawn);
     if (active.length < 2) {
       throw new ConvexError("Add at least two entrants before making the draw.");
+    }
+
+    // The last door before the writes. The entry doors already refuse a field
+    // this format cannot run, but the field shrinks and grows by withdrawal and
+    // the settings can be edited, so the count is checked against the shape
+    // once more here, where the insert would actually happen.
+    const willMake = matchesForDraw(active.length, event);
+    if (willMake > MAX_MATCHES_PER_DRAW) {
+      throw new ConvexError(capacityMessage(event));
+    }
+
+    // And the same question for the tournament as a whole, because deleting it
+    // deletes every match under every category in one mutation. This category's
+    // existing matches are about to be replaced, so they do not count.
+    const elsewhere = await ctx.db
+      .query("matches")
+      .withIndex("by_tournament", (q) => q.eq("tournamentId", event.tournamentId))
+      .collect();
+    const others = elsewhere.filter((m) => m.eventId !== args.eventId).length;
+    if (others + willMake > MAX_MATCHES_PER_TOURNAMENT) {
+      throw new ConvexError(
+        `A tournament holds at most ${MAX_MATCHES_PER_TOURNAMENT} matches, and the other ` +
+          `categories already have ${others}. This draw would add ${willMake}. Split the ` +
+          `entrants across more categories, or run this one as a knockout.`,
+      );
     }
 
     // A category switched from singles to doubles keeps the entrants it already

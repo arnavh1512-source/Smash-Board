@@ -7,6 +7,11 @@ import { scoringValidator } from "./schema";
 import { countKnockoutRounds } from "../src/lib/draw";
 import { validateConfig, ScoringError, type ScoringConfig } from "../src/lib/scoring";
 import { hasPlayedResult } from "../src/lib/results";
+import {
+  capacityMessage,
+  maxEntrantsFor,
+  MAX_EVENTS_PER_TOURNAMENT,
+} from "../src/lib/capacity";
 
 const formatValidator = v.union(
   v.literal("knockout"),
@@ -157,6 +162,12 @@ export const create = mutation({
       .withIndex("by_tournament", (q) => q.eq("tournamentId", args.tournamentId))
       .collect();
 
+    if (existing.length >= MAX_EVENTS_PER_TOURNAMENT) {
+      throw new ConvexError(
+        `A tournament holds at most ${MAX_EVENTS_PER_TOURNAMENT} categories.`,
+      );
+    }
+
     return await ctx.db.insert("events", {
       tournamentId: args.tournamentId,
       name: name.slice(0, 80),
@@ -265,6 +276,23 @@ export const update = mutation({
         throw new ConvexError("Order must be a non-negative whole number.");
       }
       patch.order = args.order;
+    }
+
+    // The shape decides how many matches the draw will make, and the entrants
+    // are already here. Switching a 200-entrant knockout to a round robin would
+    // ask the generator for 19,900 match documents on the morning of the
+    // tournament; the combination is refused now, while it is still a setting
+    // rather than a draw.
+    const SHAPE_KEYS = ["format", "groupCount", "advancePerGroup", "doubleRound", "thirdPlace"];
+    if (SHAPE_KEYS.some((key) => key in patch)) {
+      const entered = await ctx.db
+        .query("entries")
+        .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+        .collect();
+      const shape = { ...event, ...patch } as Parameters<typeof maxEntrantsFor>[0];
+      if (entered.length > maxEntrantsFor(shape)) {
+        throw new ConvexError(capacityMessage(shape));
+      }
     }
 
     await ctx.db.patch(args.eventId, patch);

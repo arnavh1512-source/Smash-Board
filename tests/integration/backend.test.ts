@@ -1078,3 +1078,231 @@ describe("a walkover is corrected the same way a score is", () => {
     await client.mutation(api.events.remove, { eventId: awardId, token, force: true });
   }, 60_000);
 });
+
+/**
+ * Every way out of a result goes through the reset button.
+ *
+ * `setWalkover` used to gate its played-result guard on the winner it was
+ * handed, so awarding a walkover over a score was refused while clearing one
+ * with `winnerId: null` was not - and clearing is the destructive direction.
+ * The guard is on the result the match already holds, and the whole transition
+ * matrix is checked here rather than the one direction the console offers:
+ *
+ *   played score -> walkover      refused
+ *   played score -> scheduled     refused
+ *   walkover     -> played score  refused
+ *   walkover     -> scheduled     refused, reset does it
+ *   BYE          -> scheduled     allowed, the draw rewrites its own byes
+ *   scheduled    -> walkover      allowed
+ */
+describe("a result is only erased by the reset button", () => {
+  let transId: Id<"events">;
+  let realMatch: Id<"matches">;
+  let awardedMatch: Id<"matches">;
+  let byeMatch: Id<"matches">;
+
+  beforeAll(async () => {
+    transId = await client.mutation(api.events.create, {
+      tournamentId,
+      token,
+      name: "Walkover Transitions",
+      teamSize: 1,
+      format: "knockout",
+      scoring: DEFAULT_SCORING,
+      thirdPlace: false,
+      groupCount: 2,
+      advancePerGroup: 2,
+      doubleRound: false,
+    });
+    // Five entrants in a bracket of eight: one real first-round match and three
+    // byes, which is exactly the mix this matrix needs.
+    for (const name of ["Tr One", "Tr Two", "Tr Three", "Tr Four", "Tr Five"]) {
+      await client.mutation(api.entries.add, { eventId: transId, token, playerOne: name });
+    }
+    await client.mutation(api.draws.generate, { eventId: transId, token, randomise: false });
+
+    const matches = await client.query(api.matches.listByEvent, { eventId: transId });
+    realMatch = matches.find((m) => m.round === 0 && m.aId && m.bId)!._id;
+    byeMatch = matches.find((m) => m.round === 0 && (!m.aId || !m.bId))!._id;
+    awardedMatch = matches.find((m) => m.round === 1 && m.aId && m.bId)!._id;
+  }, 60_000);
+
+  const load = async (matchId: Id<"matches">) => {
+    const rows = await client.query(api.matches.listByEvent, { eventId: transId });
+    return rows.find((row) => row._id === matchId)!;
+  };
+
+  it("takes a walkover on a match nobody has played", async () => {
+    const before = await load(awardedMatch);
+    expect(before.status).toBe("scheduled");
+    await client.mutation(api.matches.setWalkover, {
+      matchId: awardedMatch,
+      token,
+      winnerId: before.aId,
+    });
+    expect((await load(awardedMatch)).status).toBe("walkover");
+  });
+
+  it("refuses to clear that walkover with a blank winner", async () => {
+    // The hole this describe exists for: `winnerId: null` used to skip the
+    // guard entirely and go straight to wiping the result.
+    const message = await rejects(
+      client.mutation(api.matches.setWalkover, { matchId: awardedMatch, token, winnerId: null }),
+    );
+    expect(message).toMatch(/reset/i);
+    const after = await load(awardedMatch);
+    expect(after.status).toBe("walkover");
+    expect(after.winnerId).not.toBeNull();
+  });
+
+  it("refuses a played score over that walkover", async () => {
+    const message = await rejects(
+      client.mutation(api.matches.setScore, {
+        matchId: awardedMatch,
+        token,
+        sets: [
+          { a: 21, b: 15 },
+          { a: 21, b: 12 },
+        ],
+      }),
+    );
+    expect(message).toMatch(/reset/i);
+    expect((await load(awardedMatch)).status).toBe("walkover");
+  });
+
+  it("clears the walkover once the reset button is used", async () => {
+    await client.mutation(api.matches.reset, { matchId: awardedMatch, token });
+    const after = await load(awardedMatch);
+    expect(after.status).toBe("scheduled");
+    expect(after.winnerId).toBeNull();
+  });
+
+  it("refuses to erase a played score with a blank walkover", async () => {
+    await client.mutation(api.matches.setScore, {
+      matchId: realMatch,
+      token,
+      sets: [
+        { a: 21, b: 18 },
+        { a: 21, b: 15 },
+      ],
+    });
+    expect((await load(realMatch)).status).toBe("completed");
+
+    const message = await rejects(
+      client.mutation(api.matches.setWalkover, { matchId: realMatch, token, winnerId: null }),
+    );
+    expect(message).toMatch(/reset/i);
+
+    const after = await load(realMatch);
+    expect(after.status).toBe("completed");
+    expect(after.sets).toHaveLength(2);
+    expect(after.winnerId).not.toBeNull();
+  });
+
+  it("refuses to award that played match to the other side instead", async () => {
+    const played = await load(realMatch);
+    const message = await rejects(
+      client.mutation(api.matches.setWalkover, {
+        matchId: realMatch,
+        token,
+        winnerId: played.bId,
+      }),
+    );
+    expect(message).toMatch(/reset/i);
+    expect((await load(realMatch)).sets).toHaveLength(2);
+  });
+
+  it("still lets the draw rewrite a bye, which is not a played result", async () => {
+    // A bye is a walkover the generator awarded itself with nobody on the other
+    // side. Counting it as a result would make a fresh draw unredrawable, so
+    // the carve-out in `hasPlayedResult` has to survive the tighter guard. The
+    // draw awards it straight back, which is the point: it belongs to the
+    // generator, not to somebody who entered a result.
+    const bye = await load(byeMatch);
+    expect(bye.aId === null || bye.bId === null).toBe(true);
+    await expect(
+      client.mutation(api.matches.setWalkover, { matchId: byeMatch, token, winnerId: null }),
+    ).resolves.toBeNull();
+  });
+
+  afterAll(async () => {
+    await client.mutation(api.events.remove, { eventId: transId, token, force: true });
+  }, 60_000);
+});
+
+/**
+ * The advertised maximum is one the format can actually run.
+ *
+ * 256 entrants is a knockout of 255 matches and a round robin of 32,640, which
+ * is more documents than one Convex mutation may write and more badminton than
+ * any hall can play. The combination is refused at the entry door rather than
+ * discovered halfway through generating a draw on the morning.
+ */
+describe("a category cannot be filled past what its format can play", () => {
+  let robinId: Id<"events">;
+
+  beforeAll(async () => {
+    robinId = await client.mutation(api.events.create, {
+      tournamentId,
+      token,
+      name: "Capacity Round Robin",
+      teamSize: 1,
+      format: "round_robin",
+      scoring: DEFAULT_SCORING,
+      thirdPlace: false,
+      groupCount: 1,
+      advancePerGroup: 1,
+      doubleRound: false,
+    });
+    const names = Array.from({ length: 32 }, (_, index) => `Cap ${index + 1}`);
+    const outcome = await client.mutation(api.entries.addMany, {
+      eventId: robinId,
+      token,
+      text: names.join("\n"),
+    });
+    expect(outcome.added).toBe(32);
+  }, 120_000);
+
+  it("refuses the thirty-third entrant, and says why", async () => {
+    const message = await rejects(
+      client.mutation(api.entries.add, { eventId: robinId, token, playerOne: "Cap 33" }),
+    );
+    expect(message).toMatch(/round robin/i);
+    expect(message).toMatch(/32 entrants/);
+    expect(message).toMatch(/496 matches/);
+  });
+
+  it("skips the overflow of a paste rather than failing the whole list", async () => {
+    const outcome = await client.mutation(api.entries.addMany, {
+      eventId: robinId,
+      token,
+      text: "Cap 34\nCap 35",
+    });
+    expect(outcome.added).toBe(0);
+    expect(outcome.skipped).toHaveLength(2);
+    expect(outcome.skipped.every((line) => /full/i.test(line))).toBe(true);
+  });
+
+  it("refuses a setting the entrants already in the category cannot survive", async () => {
+    // Thirty-two is the ceiling for one leg. Asking for two doubles the
+    // matches, so it is refused while it is still a setting, not a draw.
+    const message = await rejects(
+      client.mutation(api.events.update, { eventId: robinId, token, doubleRound: true }),
+    );
+    expect(message).toMatch(/at most 23 entrants/);
+  });
+
+  it("takes the same field into a knockout, which is a format that can hold it", async () => {
+    await client.mutation(api.events.update, { eventId: robinId, token, format: "knockout" });
+    const outcome = await client.mutation(api.entries.addMany, {
+      eventId: robinId,
+      token,
+      text: "Cap 33\nCap 34",
+    });
+    expect(outcome.added).toBe(2);
+  });
+
+  afterAll(async () => {
+    await client.mutation(api.events.remove, { eventId: robinId, token });
+  }, 60_000);
+});

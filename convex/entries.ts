@@ -4,6 +4,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { requireOrganiser } from "./lib/auth";
 import { applyWithdrawal } from "./lib/progression";
 import { personKey } from "../src/lib/identity";
+import { capacityMessage, maxEntrantsFor } from "../src/lib/capacity";
 import type { MutationCtx } from "./_generated/server";
 
 const entryValidator = v.object({
@@ -19,7 +20,16 @@ const entryValidator = v.object({
   createdAt: v.number(),
 });
 
-const MAX_ENTRIES_PER_EVENT = 256;
+/**
+ * How many entrants this category can hold.
+ *
+ * Not a single number: 256 is a knockout, and the same 256 in a round robin is
+ * 32,640 matches, which no mutation in Convex can write and no hall can play.
+ * The ceiling follows the format the organiser chose.
+ */
+function roomFor(event: Doc<"events">): number {
+  return maxEntrantsFor(event);
+}
 
 /**
  * Rows as they leave the server for a browser.
@@ -242,8 +252,8 @@ export const add = mutation({
       .query("entries")
       .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
       .collect();
-    if (existing.length >= MAX_ENTRIES_PER_EVENT) {
-      throw new ConvexError(`A category holds at most ${MAX_ENTRIES_PER_EVENT} entrants.`);
+    if (existing.length >= roomFor(event)) {
+      throw new ConvexError(capacityMessage(event));
     }
 
     assertPeopleFree(peopleIn(existing), [playerOne, ...(playerTwo ? [playerTwo] : [])]);
@@ -281,7 +291,7 @@ export const addMany = mutation({
       .query("entries")
       .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
       .collect();
-    let room = MAX_ENTRIES_PER_EVENT - existing.length;
+    let room = roomFor(event) - existing.length;
     // Same rule as the single form and the form import: a person enters once.
     // A pasted list is retyped or re-pasted more often than any other door, so
     // the second paste of the same list adds nobody rather than everybody.
@@ -384,7 +394,7 @@ export const importRows = mutation({
       .query("entries")
       .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
       .collect();
-    let room = MAX_ENTRIES_PER_EVENT - existing.length;
+    let room = roomFor(event) - existing.length;
 
     // The preview already skipped anybody who is here, but the sheet was
     // parsed in a browser tab that may have been open for a while, and two

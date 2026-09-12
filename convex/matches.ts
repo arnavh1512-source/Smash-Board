@@ -190,11 +190,18 @@ export const setWalkover = mutation({
       throw new ConvexError("The winner must be one of the two sides in this match.");
     }
 
-    // A played result is never turned into a walkover in place. Correcting one
-    // is a two-step move everywhere else in the console — reset, then enter the
-    // right thing — and going straight from 21-15 to "did not play" would erase
-    // a score with one tap and no trace of what it was.
-    if (args.winnerId && hasPlayedResult(match)) {
+    // A played result is never turned into a walkover in place, and it is never
+    // cleared here either. Correcting one is a two-step move everywhere else in
+    // the console — reset, then enter the right thing — and going straight from
+    // 21-15 to "did not play" would erase a score with one tap and no trace of
+    // what it was. The guard is on the result this match already holds, not on
+    // the winner being handed in: `winnerId: null` is the erasing direction, so
+    // gating on a truthy winner would have left the destructive half open.
+    //
+    // A bye is deliberately not a played result — one side is empty and the
+    // generator awarded it the moment the draw was made — so the draw can still
+    // rewrite its own walkovers.
+    if (hasPlayedResult(match)) {
       throw new ConvexError(
         "This match already has a result. Reset it first, then award the walkover.",
       );
