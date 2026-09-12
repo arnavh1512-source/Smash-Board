@@ -105,7 +105,12 @@ export function CreateTournamentForm() {
             <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </Field>
           <Field label="Ends">
-            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            <Input
+              type="date"
+              min={startDate || undefined}
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
           </Field>
         </div>
 

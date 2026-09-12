@@ -108,6 +108,61 @@ describe("tournament creation", () => {
     );
     expect(message).toMatch(/PIN/i);
   });
+
+  it("refuses an end date before the start date on create", async () => {
+    const message = await rejects(
+      client.mutation(api.tournaments.create, {
+        name: `Backwards Range ${Date.now()}`,
+        startDate: "2026-09-20",
+        endDate: "2026-09-18",
+        pin: PIN,
+        isPublic: false,
+      }),
+    );
+    expect(message).toMatch(/end date/i);
+  });
+
+  it("refuses a malformed date on create", async () => {
+    const message = await rejects(
+      client.mutation(api.tournaments.create, {
+        name: `Bad Date ${Date.now()}`,
+        startDate: "20 Sep 2026",
+        pin: PIN,
+        isPublic: false,
+      }),
+    );
+    expect(message).toMatch(/date/i);
+  });
+
+  it("refuses an update that would invert the range against the stored other end", async () => {
+    await client.mutation(api.tournaments.update, {
+      tournamentId,
+      token,
+      startDate: "2026-09-20",
+      endDate: "2026-09-22",
+    });
+
+    const message = await rejects(
+      client.mutation(api.tournaments.update, { tournamentId, token, startDate: "2026-09-25" }),
+    );
+    expect(message).toMatch(/end date/i);
+
+    // Restore a valid range so later tests in this file aren't left with the
+    // rejected write's partial state.
+    await client.mutation(api.tournaments.update, {
+      tournamentId,
+      token,
+      startDate: "2026-09-20",
+      endDate: "2026-09-22",
+    });
+  });
+
+  it("refuses a malformed date on update", async () => {
+    const message = await rejects(
+      client.mutation(api.tournaments.update, { tournamentId, token, endDate: "not-a-date" }),
+    );
+    expect(message).toMatch(/date/i);
+  });
 });
 
 describe("entrants", () => {

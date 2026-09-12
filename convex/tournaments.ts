@@ -63,6 +63,26 @@ function cleanText(value: string | undefined, max: number): string | undefined {
   return trimmed.slice(0, max);
 }
 
+/** The shape `<input type="date">` sends, and the only shape the scheduler can read. */
+const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
+
+function assertDateShape(value: string | undefined, label: string): void {
+  if (value !== undefined && !DATE_SHAPE.test(value)) {
+    throw new ConvexError(`${label} must be a valid date.`);
+  }
+}
+
+/**
+ * A range that ends before it starts is bad data no organiser meant to enter,
+ * so it is rejected here rather than left for the schedule or the tournament
+ * page to display nonsense.
+ */
+function assertDateOrder(startDate: string | undefined, endDate: string | undefined): void {
+  if (startDate !== undefined && endDate !== undefined && endDate < startDate) {
+    throw new ConvexError("End date can't be before the start date.");
+  }
+}
+
 export const create = mutation({
   args: {
     name: v.string(),
@@ -88,6 +108,12 @@ export const create = mutation({
     if (name.length > MAX_NAME) throw new ConvexError(`Keep the name under ${MAX_NAME} characters.`);
     assertPinShape(args.pin);
 
+    const startDate = cleanText(args.startDate, 20);
+    const endDate = cleanText(args.endDate, 20);
+    assertDateShape(startDate, "Start date");
+    assertDateShape(endDate, "End date");
+    assertDateOrder(startDate, endDate);
+
     // `getBySlug` uses `.unique()`, which would throw forever on a duplicate,
     // so a clash must never be inserted. Each retry widens the suffix, which
     // makes a run of clashes impossible rather than merely improbable.
@@ -111,8 +137,8 @@ export const create = mutation({
       name,
       slug,
       venue: cleanText(args.venue, 160),
-      startDate: cleanText(args.startDate, 20),
-      endDate: cleanText(args.endDate, 20),
+      startDate,
+      endDate,
       notes: cleanText(args.notes, 2000),
       organiserName: cleanText(args.organiserName, 120),
       organiserPhone: cleanText(args.organiserPhone, 32),
@@ -175,7 +201,7 @@ export const update = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireOrganiser(ctx, args.tournamentId, args.token);
+    const tournament = await requireOrganiser(ctx, args.tournamentId, args.token);
 
     const patch: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.name !== undefined) {
@@ -184,8 +210,20 @@ export const update = mutation({
       patch.name = name.slice(0, MAX_NAME);
     }
     if (args.venue !== undefined) patch.venue = cleanText(args.venue, 160);
-    if (args.startDate !== undefined) patch.startDate = cleanText(args.startDate, 20);
-    if (args.endDate !== undefined) patch.endDate = cleanText(args.endDate, 20);
+
+    const startDate = args.startDate !== undefined ? cleanText(args.startDate, 20) : undefined;
+    const endDate = args.endDate !== undefined ? cleanText(args.endDate, 20) : undefined;
+    assertDateShape(startDate, "Start date");
+    assertDateShape(endDate, "End date");
+    // Validate against whichever side of the range isn't being changed, so a
+    // one-sided edit can't silently create an inverted range either.
+    assertDateOrder(
+      args.startDate !== undefined ? startDate : tournament.startDate,
+      args.endDate !== undefined ? endDate : tournament.endDate,
+    );
+    if (args.startDate !== undefined) patch.startDate = startDate;
+    if (args.endDate !== undefined) patch.endDate = endDate;
+
     if (args.notes !== undefined) patch.notes = cleanText(args.notes, 2000);
     if (args.organiserName !== undefined) patch.organiserName = cleanText(args.organiserName, 120);
     if (args.organiserPhone !== undefined) patch.organiserPhone = cleanText(args.organiserPhone, 32);

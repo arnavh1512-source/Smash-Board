@@ -106,6 +106,7 @@ function DetailsForm({ tournament, token }: { tournament: TournamentDetails; tok
           <Field label="End date">
             <Input
               type="date"
+              min={draft.startDate || undefined}
               value={draft.endDate}
               onChange={(e) => setDraft({ ...draft, endDate: e.target.value })}
             />
