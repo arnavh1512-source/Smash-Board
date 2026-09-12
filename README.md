@@ -21,7 +21,14 @@ a score entered by the organiser appears on every open scoreboard without a refr
   nothing else: they cannot touch the draw, the entrants, the settings or the tournament itself.
 - **Order of play** — every category laid out on one timetable across the courts the hall has,
   planned to keep a rest between a player's matches and let another category fill the court while
-  they take it. Readable in time order or court by court, by organiser and public alike. The plan
+  they take it. Readable in time order or court by court, by organiser and public alike.
+- **A hall that stays walkable** — courts limit how many people are *playing*; "categories at once"
+  limits how many are *in the building*. A category's whole field turns up when its first match is
+  called and drifts home after its last, so six categories running together put six fields in one
+  hall. Set the limit to what the seats and the door can take and the rest of the categories wait
+  their turn — a calmer hall, at the price of a longer day. The planner reports the peak head count
+  after every run so the number can be checked against the room. Set it at or above the number of
+  categories to lift the limit entirely. The plan
   is a snapshot of the draw as it stood when it was made: a withdrawal, a reordered category, a
   moved start date or a knockout slot that only just learned who is playing it all mark it stale,
   and the console says so until it is regenerated.
@@ -144,6 +151,7 @@ tournaments, so run them against a development deployment, never production.
 | `tests/display.test.ts` | entrant names, scoring summaries, match ordering |
 | `tests/identity.test.ts` | folding a name typed several ways into one person, so rest and duplicate checks key on the human rather than the spelling |
 | `tests/schedule.test.ts` | court packing, rest between matches, the court-count cap, clock maths |
+| `tests/hallCrowding.test.ts` | the hall limit: categories run in blocks, rest survives a block boundary, feeders stay in front, and the peak head count falls as the limit tightens |
 | `tests/scheduleStress.test.ts` | a whole day: three categories, two courts, byes, a group stage, a third-place match, players in two draws |
 | `tests/scheduleBasis.test.ts` | the fingerprint that tells a fresh order of play from a stale one — dates, withdrawals, reordered categories, a knockout slot that only just learned who's in it |
 | `tests/roundScoring.test.ts` | the semi-final and final scoring overrides |

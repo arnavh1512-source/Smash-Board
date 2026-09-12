@@ -23,7 +23,13 @@ import { personKey } from "@/lib/identity";
  * left standing idle while somebody waits.
  */
 
-const OPTIONS: ScheduleOptions = { matchMinutes: 25, restMinutes: 20, courts: 2 };
+const OPTIONS: ScheduleOptions = {
+  matchMinutes: 25,
+  restMinutes: 20,
+  courts: 2,
+  // All three categories run together: this suite is about interleaving.
+  categoriesAtOnce: 3,
+};
 
 /** Men's singles: a 16-slot draw with 12 entrants, so four byes. */
 const singles = Array.from({ length: 12 }, (_, i) => `Singles Player ${i + 1}`);

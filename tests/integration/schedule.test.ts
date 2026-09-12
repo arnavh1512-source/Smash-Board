@@ -24,7 +24,14 @@ const WIN = [
   { a: 21, b: 10 },
   { a: 21, b: 10 },
 ];
-const SCHEDULE_OPTIONS = { dayStart: "09:00", matchMinutes: 30, restMinutes: 30, courts: 2 };
+const SCHEDULE_OPTIONS = {
+  dayStart: "09:00",
+  matchMinutes: 30,
+  restMinutes: 30,
+  courts: 2,
+  // No hall limit: these tests are about the draw, not the door.
+  categoriesAtOnce: 24,
+};
 
 async function makeTournament(name: string, startDate: string) {
   return await client.mutation(api.tournaments.create, {

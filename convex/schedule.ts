@@ -5,6 +5,7 @@ import { requireOrganiser } from "./lib/auth";
 import {
   ScheduleError,
   courtName,
+  hallLoad,
   parseClockTime,
   planSchedule,
   scheduleBasis,
@@ -172,8 +173,13 @@ export const generate = mutation({
     matchMinutes: v.number(),
     restMinutes: v.number(),
     courts: v.number(),
+    categoriesAtOnce: v.number(),
   },
-  returns: v.object({ scheduled: v.number(), lastFinish: v.string() }),
+  returns: v.object({
+    scheduled: v.number(),
+    lastFinish: v.string(),
+    peakInHall: v.number(),
+  }),
   handler: async (ctx, args) => {
     const tournament = await requireOrganiser(ctx, args.tournamentId, args.token);
     if (!tournament.startDate) {
@@ -193,6 +199,7 @@ export const generate = mutation({
         matchMinutes: args.matchMinutes,
         restMinutes: args.restMinutes,
         courts: args.courts,
+        categoriesAtOnce: args.categoriesAtOnce,
       });
     } catch (error) {
       if (error instanceof ScheduleError) throw new ConvexError(error.message);
@@ -231,6 +238,7 @@ export const generate = mutation({
         matchMinutes: args.matchMinutes,
         restMinutes: args.restMinutes,
         courts: args.courts,
+        categoriesAtOnce: args.categoriesAtOnce,
         generatedAt: now,
         basis: scheduleBasis(tournament.startDate, planner),
       },
@@ -240,6 +248,9 @@ export const generate = mutation({
     return {
       scheduled: slots.length,
       lastFinish: toClockTime(tournament.startDate, args.dayStart, lastEnd),
+      // Reported so the organiser can hold the number against the seats and
+      // the door, and lower the category limit if the hall cannot take it.
+      peakInHall: hallLoad(planner, slots).peak,
     };
   },
 });

@@ -22,6 +22,12 @@ export const scheduleValidator = v.object({
   restMinutes: v.number(),
   /** How many courts run in parallel. */
   courts: v.number(),
+  /**
+   * How many categories may be under way at the same time. Optional because
+   * plans stored before this setting existed have no value for it; those are
+   * read as "no limit".
+   */
+  categoriesAtOnce: v.optional(v.number()),
   /** When the planner last ran, so the console can say the plan is stale. */
   generatedAt: v.union(v.number(), v.null()),
   /**

@@ -297,6 +297,7 @@ describe("what a referee may not do", () => {
           matchMinutes: 30,
           restMinutes: 30,
           courts: 2,
+          categoriesAtOnce: 24,
         }),
       ),
     ).toMatch(/organiser/i);

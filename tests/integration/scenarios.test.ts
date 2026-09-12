@@ -270,6 +270,7 @@ describe("scenario A: 20 entrants, seeded knockout with a third-place playoff", 
       matchMinutes: 30,
       restMinutes: 30,
       courts: 4,
+      categoriesAtOnce: 24,
     });
     expect(result.scheduled).toBeGreaterThan(0);
     expect(result.lastFinish).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);

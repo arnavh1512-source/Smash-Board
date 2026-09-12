@@ -17,14 +17,16 @@ interface ScheduleSettings {
   matchMinutes: number;
   restMinutes: number;
   courts: number;
+  categoriesAtOnce: number;
 }
 
 /**
  * Planning the order of play.
  *
- * The organiser sets four numbers; the server lays every category out on the
- * available courts so that no player goes back on before their rest is up, and
- * writes the resulting times onto the matches.
+ * The organiser sets five numbers; the server lays every category out on the
+ * available courts so that no player goes back on before their rest is up and
+ * the hall never holds more categories than it can seat, then writes the
+ * resulting times onto the matches.
  */
 export function SchedulePanel({
   tournamentId,
@@ -37,7 +39,13 @@ export function SchedulePanel({
 }: {
   tournamentId: Id<"tournaments">;
   startDate?: string;
-  schedule?: { dayStart: string; matchMinutes: number; restMinutes: number; courts: number };
+  schedule?: {
+    dayStart: string;
+    matchMinutes: number;
+    restMinutes: number;
+    courts: number;
+    categoriesAtOnce?: number;
+  };
   token: string;
   matches: readonly Doc<"matches">[];
   events: readonly Doc<"events">[];
@@ -50,6 +58,7 @@ export function SchedulePanel({
     matchMinutes: schedule?.matchMinutes ?? DEFAULT_SCHEDULE.matchMinutes,
     restMinutes: schedule?.restMinutes ?? DEFAULT_SCHEDULE.restMinutes,
     courts: schedule?.courts ?? DEFAULT_SCHEDULE.courts,
+    categoriesAtOnce: schedule?.categoriesAtOnce ?? DEFAULT_SCHEDULE.categoriesAtOnce,
   });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -122,6 +131,18 @@ export function SchedulePanel({
               onChange={(e) => setDraft({ ...draft, restMinutes: Number(e.target.value) })}
             />
           </Field>
+          <Field
+            label="Categories at once"
+            hint="Keeps the hall from filling up. The rest wait their turn, so the day runs longer."
+          >
+            <Input
+              type="number"
+              min={1}
+              max={24}
+              value={draft.categoriesAtOnce}
+              onChange={(e) => setDraft({ ...draft, categoriesAtOnce: Number(e.target.value) })}
+            />
+          </Field>
         </div>
 
         {planned ? <StaleScheduleNotice tournamentId={tournamentId} audience="organiser" /> : null}
@@ -139,7 +160,9 @@ export function SchedulePanel({
                 setNotice(
                   `${outcome.scheduled} matches timetabled. Last match ends at ${clockOf(
                     outcome.lastFinish,
-                  )} on ${dayOf(outcome.lastFinish)}.`,
+                  )} on ${dayOf(outcome.lastFinish)}. At the busiest moment ${
+                    outcome.peakInHall
+                  } players are in the hall.`,
                 );
               })
             }

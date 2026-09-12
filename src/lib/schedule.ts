@@ -45,6 +45,17 @@ export interface ScheduleOptions {
   restMinutes: number;
   /** Courts running in parallel. */
   courts: number;
+  /**
+   * How many categories are allowed to be under way at the same time.
+   *
+   * Courts limit how many people are *playing*; this limits how many are in
+   * the building. A category's whole field turns up when its first match is
+   * called and drifts home after its last, so running six categories at once
+   * puts six fields in one hall — queues at the door, nowhere to sit, and
+   * players who cannot hear their name called. Set at or above the number of
+   * categories to lift the limit entirely.
+   */
+  categoriesAtOnce: number;
 }
 
 export interface ScheduledSlot {
@@ -61,6 +72,10 @@ export const DEFAULT_SCHEDULE: ScheduleOptions & { dayStart: string } = {
   matchMinutes: 30,
   restMinutes: 30,
   courts: 2,
+  // Two is the smallest number that still lets one category cover another's
+  // rest, which is the reason to run categories in parallel in the first
+  // place. Anything higher trades a calmer hall for a shorter day.
+  categoriesAtOnce: 2,
 };
 
 export class ScheduleError extends Error {}
@@ -125,6 +140,13 @@ function assertOptions(options: ScheduleOptions): void {
   if (!Number.isInteger(options.courts) || options.courts < 1 || options.courts > 24) {
     throw new ScheduleError("Set between 1 and 24 courts.");
   }
+  if (
+    !Number.isInteger(options.categoriesAtOnce) ||
+    options.categoriesAtOnce < 1 ||
+    options.categoriesAtOnce > 24
+  ) {
+    throw new ScheduleError("Between 1 and 24 categories may run at the same time.");
+  }
 }
 
 /**
@@ -166,6 +188,34 @@ function insertBooking(bookings: Booking[], booking: Booking): void {
 }
 
 /**
+ * Split the matches into successive blocks of categories.
+ *
+ * Each block is planned in full before the next one is allowed to start, which
+ * is what turns "at most N categories at once" into a guarantee rather than a
+ * hope: a category cannot be under way in two blocks, and two blocks never
+ * overlap in time. Inside a block the categories still interleave freely,
+ * because that interleaving is what covers everybody's rest.
+ *
+ * Categories are blocked in the order the organiser put them in, so the first
+ * category on the list is also the first one called to the hall.
+ */
+function categoryBlocks(ordered: readonly PlannerMatch[], cap: number): PlannerMatch[][] {
+  const orderOf = new Map<string, number>();
+  for (const match of ordered) {
+    if (!orderOf.has(match.eventId)) orderOf.set(match.eventId, match.eventOrder);
+  }
+  const ids = [...orderOf]
+    .sort(([aId, aOrder], [bId, bOrder]) => aOrder - bOrder || aId.localeCompare(bId))
+    .map(([id]) => id);
+  if (cap >= ids.length) return [[...ordered]];
+
+  const blockOf = new Map(ids.map((id, index) => [id, Math.floor(index / cap)] as const));
+  const blocks: PlannerMatch[][] = Array.from({ length: Math.ceil(ids.length / cap) }, () => []);
+  for (const match of ordered) blocks[blockOf.get(match.eventId)!].push(match);
+  return blocks;
+}
+
+/**
  * Lay the matches out on courts.
  *
  * Greedy by draw order: each match takes the earliest start any court can offer
@@ -189,47 +239,117 @@ export function planSchedule(
   /** When each match finishes, so the rounds after it can wait for it. */
   const endOf = new Map<string, number>();
   const slots: ScheduledSlot[] = [];
+  /** The last minute any match has been given, so a block can start after it. */
+  let lastEnd = 0;
 
-  for (const match of ordered) {
-    let ready = 0;
-    for (const feeder of match.feeders) {
-      const feederEnd = endOf.get(feeder);
-      // A feeder that was skipped or that is not in this set imposes no wait.
-      if (feederEnd !== undefined) ready = Math.max(ready, feederEnd + options.restMinutes);
-    }
+  for (const block of categoryBlocks(ordered, options.categoriesAtOnce)) {
+    // Nothing in this block may start until the previous block is off court
+    // and its players have left. That, and only that, is what keeps the hall
+    // holding one block's fields rather than the whole entry list.
+    const floor = lastEnd;
 
-    if (match.skip) {
-      // No court time, but the round after it still waits on this result.
-      endOf.set(match.id, ready);
-      continue;
-    }
-
-    for (const player of match.sides) {
-      ready = Math.max(ready, playerFree.get(player) ?? 0);
-    }
-
-    let bestCourt = 0;
-    let bestStart = firstFit(booked[0], ready, options.matchMinutes);
-    for (let court = 1; court < options.courts; court++) {
-      const start = firstFit(booked[court], ready, options.matchMinutes);
-      if (start < bestStart) {
-        bestCourt = court;
-        bestStart = start;
+    for (const match of block) {
+      let ready = floor;
+      for (const feeder of match.feeders) {
+        const feederEnd = endOf.get(feeder);
+        // A feeder that was skipped or that is not in this set imposes no wait.
+        if (feederEnd !== undefined) ready = Math.max(ready, feederEnd + options.restMinutes);
       }
-    }
 
-    const endMinute = bestStart + options.matchMinutes;
-    insertBooking(booked[bestCourt], { start: bestStart, end: endMinute });
-    endOf.set(match.id, endMinute);
-    for (const player of match.sides) {
-      playerFree.set(player, endMinute + options.restMinutes);
+      if (match.skip) {
+        // No court time, but the round after it still waits on this result.
+        endOf.set(match.id, ready);
+        continue;
+      }
+
+      for (const player of match.sides) {
+        ready = Math.max(ready, playerFree.get(player) ?? 0);
+      }
+
+      let bestCourt = 0;
+      let bestStart = firstFit(booked[0], ready, options.matchMinutes);
+      for (let court = 1; court < options.courts; court++) {
+        const start = firstFit(booked[court], ready, options.matchMinutes);
+        if (start < bestStart) {
+          bestCourt = court;
+          bestStart = start;
+        }
+      }
+
+      const endMinute = bestStart + options.matchMinutes;
+      insertBooking(booked[bestCourt], { start: bestStart, end: endMinute });
+      endOf.set(match.id, endMinute);
+      lastEnd = Math.max(lastEnd, endMinute);
+      for (const player of match.sides) {
+        playerFree.set(player, endMinute + options.restMinutes);
+      }
+      slots.push({ matchId: match.id, startMinute: bestStart, endMinute, court: bestCourt });
     }
-    slots.push({ matchId: match.id, startMinute: bestStart, endMinute, court: bestCourt });
   }
 
   return slots.sort(
     (a, b) => a.startMinute - b.startMinute || a.court - b.court,
   );
+}
+
+/** The busiest the hall gets under a finished plan. */
+export interface HallLoad {
+  /** Players in the building at the worst moment. */
+  peak: number;
+  /** Minutes from the start of play at which that moment begins. */
+  startMinute: number;
+}
+
+/**
+ * How full the hall gets.
+ *
+ * A player is counted as present from the start of their first match to the
+ * end of their last: nobody arrives for one match and comes back for the next,
+ * and in a club hall they are sitting on the same three benches the whole
+ * time. The peak is therefore the largest number of those spans that overlap,
+ * which is the number an organiser can compare against the seats they have.
+ *
+ * This measures the plan rather than shaping it — `categoriesAtOnce` is the
+ * lever, and this is the reading that says whether the lever is set right.
+ */
+export function hallLoad(
+  matches: readonly PlannerMatch[],
+  slots: readonly ScheduledSlot[],
+): HallLoad {
+  const sidesOf = new Map(matches.map((match) => [match.id, match.sides] as const));
+  const spans = new Map<string, { from: number; to: number }>();
+  for (const slot of slots) {
+    for (const person of sidesOf.get(slot.matchId) ?? []) {
+      const known = spans.get(person);
+      spans.set(
+        person,
+        known
+          ? { from: Math.min(known.from, slot.startMinute), to: Math.max(known.to, slot.endMinute) }
+          : { from: slot.startMinute, to: slot.endMinute },
+      );
+    }
+  }
+
+  // A departure at the same minute as an arrival is sorted first, so one
+  // person leaving as another walks in is not counted as two people present.
+  const moves = [...spans.values()]
+    .flatMap((span) => [
+      { at: span.from, change: 1 },
+      { at: span.to, change: -1 },
+    ])
+    .sort((a, b) => a.at - b.at || a.change - b.change);
+
+  let inHall = 0;
+  let peak = 0;
+  let startMinute = 0;
+  for (const move of moves) {
+    inHall += move.change;
+    if (inHall > peak) {
+      peak = inHall;
+      startMinute = move.at;
+    }
+  }
+  return { peak, startMinute };
 }
 
 /** "Court 1" for the first court. Organisers count from one, arrays from zero. */

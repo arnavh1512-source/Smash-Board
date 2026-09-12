@@ -15,7 +15,13 @@ import {
   type ScheduledSlot,
 } from "@/lib/schedule";
 
-const OPTIONS: ScheduleOptions = { matchMinutes: 30, restMinutes: 30, courts: 2 };
+const OPTIONS: ScheduleOptions = {
+  matchMinutes: 30,
+  restMinutes: 30,
+  courts: 2,
+  // High enough to never bite; the hall limit has its own suite.
+  categoriesAtOnce: 24,
+};
 
 function match(overrides: Partial<PlannerMatch> & { id: string }): PlannerMatch {
   return {
@@ -76,7 +82,7 @@ describe("planSchedule", () => {
         match({ id: "a2", eventOrder: 0, slot: 1, sides: ["p1", "p3"] }),
         match({ id: "b1", eventId: "e2", eventOrder: 1, slot: 0, sides: ["q1", "q2"] }),
       ],
-      { matchMinutes: 30, restMinutes: 30, courts: 1 },
+      { ...OPTIONS, courts: 1 },
     );
 
     // One court: the second men's match cannot start until minute 60, so the
@@ -144,7 +150,7 @@ describe("planSchedule", () => {
       Array.from({ length: 12 }, (_, i) =>
         match({ id: `m${i}`, slot: i, sides: [`p${i * 2}`, `p${i * 2 + 1}`] }),
       ),
-      { matchMinutes: 25, restMinutes: 40, courts: 3 },
+      { ...OPTIONS, matchMinutes: 25, restMinutes: 40, courts: 3 },
     );
 
     for (const a of slots) {
@@ -169,7 +175,7 @@ describe("planSchedule", () => {
             sides: [`p${i % 6}`, `q${i}`],
           }),
         ),
-        { matchMinutes: 30, restMinutes: 30, courts },
+        { ...OPTIONS, courts },
       );
 
       const edges = [...new Set(slots.map((slot) => slot.startMinute))];
@@ -191,7 +197,7 @@ describe("planSchedule", () => {
         match({ id: "m1", slot: 0, sides: ["p1"] }),
         match({ id: "m2", slot: 1, sides: ["p1"] }),
       ],
-      { matchMinutes: 20, restMinutes: 0, courts: 2 },
+      { ...OPTIONS, matchMinutes: 20, restMinutes: 0 },
     );
 
     expect(slotOf(slots, "m2").startMinute).toBe(20);
@@ -205,6 +211,9 @@ describe("planSchedule", () => {
     expect(() => planSchedule([], { ...OPTIONS, courts: 0 })).toThrow(ScheduleError);
     expect(() => planSchedule([], { ...OPTIONS, courts: 2.5 })).toThrow(ScheduleError);
     expect(() => planSchedule([], { ...OPTIONS, courts: 25 })).toThrow(ScheduleError);
+    expect(() => planSchedule([], { ...OPTIONS, categoriesAtOnce: 0 })).toThrow(ScheduleError);
+    expect(() => planSchedule([], { ...OPTIONS, categoriesAtOnce: 1.5 })).toThrow(ScheduleError);
+    expect(() => planSchedule([], { ...OPTIONS, categoriesAtOnce: 25 })).toThrow(ScheduleError);
   });
 
   it("plans nothing from an empty draw", () => {
