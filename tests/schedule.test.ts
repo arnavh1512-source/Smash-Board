@@ -4,6 +4,7 @@ import {
   courtName,
   dayOf,
   DEFAULT_SCHEDULE,
+  endDateOverrun,
   formatDuration,
   gapMinutes,
   isTimestamp,
@@ -334,5 +335,56 @@ describe("whole-minute durations", () => {
 
   it("still takes the whole numbers either side of them", () => {
     expect(() => planSchedule(MATCHES, { ...OPTIONS, matchMinutes: 30, restMinutes: 20 })).not.toThrow();
+  });
+});
+
+/**
+ * The end date is a booking, not a decoration.
+ *
+ * `toClockTime` rolls past midnight so a late match still prints with the right
+ * date on it. Left alone, that let a one-day tournament quietly become a
+ * two-day one: fifty matches on two courts at thirty minutes each is over
+ * twelve hours of play, and the timetable simply carried on into tomorrow.
+ */
+describe("endDateOverrun", () => {
+  it("passes a plan that finishes on the last day", () => {
+    // 09:00 plus eight hours is 17:00 on the same day.
+    expect(endDateOverrun("2026-09-20", "2026-09-20", "09:00", 480)).toBeNull();
+  });
+
+  it("passes a plan that finishes at the very last minute of the last day", () => {
+    expect(endDateOverrun("2026-09-20", "2026-09-20", "09:00", 15 * 60 - 1)).toBeNull();
+  });
+
+  it("refuses a one-day tournament whose order of play rolls into tomorrow", () => {
+    // 09:00 plus sixteen hours is 01:00 the next morning.
+    const message = endDateOverrun("2026-09-20", "2026-09-20", "09:00", 16 * 60);
+    expect(message).toMatch(/past the tournament's end date of 2026-09-20/);
+    expect(message).toMatch(/2026-09-21/);
+    expect(message).toMatch(/01:00/);
+  });
+
+  it("names the levers, because the answer is usually a court and not a longer tournament", () => {
+    const message = endDateOverrun("2026-09-20", "2026-09-20", "09:00", 20 * 60) ?? "";
+    expect(message).toMatch(/court/i);
+    expect(message).toMatch(/shorten the matches/i);
+    expect(message).toMatch(/earlier/i);
+    expect(message).toMatch(/end date/i);
+  });
+
+  it("lets a two-day tournament use its second day", () => {
+    expect(endDateOverrun("2026-09-20", "2026-09-21", "09:00", 16 * 60)).toBeNull();
+    // But not a third one.
+    expect(endDateOverrun("2026-09-20", "2026-09-21", "09:00", 40 * 60)).not.toBeNull();
+  });
+
+  it("crosses a month boundary the way the calendar does", () => {
+    expect(endDateOverrun("2026-09-30", "2026-10-01", "18:00", 8 * 60)).toBeNull();
+    expect(endDateOverrun("2026-09-30", "2026-09-30", "18:00", 8 * 60)).not.toBeNull();
+  });
+
+  it("says nothing at all when the organiser has not set an end date", () => {
+    // The field is optional, and an unset end date is not a promise to keep.
+    expect(endDateOverrun("2026-09-20", undefined, "09:00", 100 * 60)).toBeNull();
   });
 });

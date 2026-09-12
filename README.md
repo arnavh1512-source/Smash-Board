@@ -64,6 +64,12 @@ has not happened yet and throwing away something that has.
   wins and the table still shows how the group actually went. Their remaining matches become
   walkovers, and they drop below every entrant who is still in the tournament, so a qualifying
   place always goes to somebody who can turn up and play it.
+- **An order of play may not run past the tournament's end date.** A late match rolls onto the
+  next date on the timetable, because a match called at 23:40 has to print with tomorrow's date on
+  it — but that is the clock, not permission for a one-day tournament to become a two-day one. A
+  plan that does not fit inside the dates the hall was booked for is refused before a single match
+  is given a time, and the message names the overrun and the levers that close it: another court, a
+  shorter match, an earlier start, more categories at once, or a later end date.
 - **The organiser's phone number is private unless it is published.** A tick box on the
   tournament form decides whether the number travels with the public page; without it the number
   stays on the server and only the console can read it back, behind the PIN.
@@ -136,21 +142,34 @@ NEXT_PUBLIC_CONVEX_URL=https://<your-deployment>.convex.cloud
 
 ## Tests
 
-The pure engines are covered by Vitest. There is no database or browser in the loop, so the
-suite runs in under a second.
+Three layers, each with its own command. The unit suites cover the pure engines — no database
+and no browser, so they run in about a second. The integration suites run every mutation against a
+real Convex deployment. The end-to-end suites drive the real UI in a real browser.
 
 ```bash
 npm run lint          # ESLint, zero warnings tolerated
 npx tsc --noEmit      # type check
-npm test              # 206 unit tests over scoring, draws, standings, scheduling and formatting
+npm test              # unit tests: scoring, draws, standings, scheduling, capacity, CSV parsing, formatting
 npm run test:coverage # same run with a v8 coverage report (80% floor, enforced)
 npm run test:integration  # runs against a live Convex deployment; see the note below
 npm run test:e2e      # Playwright, drives the real UI against a dev server it starts itself
 npm run test:e2e:ui   # the same suite in Playwright's watch UI
 ```
 
-The integration suites talk to the deployment in `.env.local` and create their own throwaway
-tournaments, so run them against a development deployment, never production.
+The integration suites talk to the deployment named in `.env.local` and create their own
+throwaway tournaments, which they delete afterwards — so run them against a development deployment,
+never production. Push the functions first, or they will test the previous version of the backend:
+
+```bash
+npx convex dev --once      # push the current functions to the dev deployment
+npm run test:integration
+```
+
+The end-to-end suites need the browsers installed once:
+
+```bash
+npx playwright install
+```
 
 | Suite | Covers |
 | --- | --- |
@@ -164,6 +183,8 @@ tournaments, so run them against a development deployment, never production.
 | `tests/hallCrowding.test.ts` | the hall limit: categories run in blocks, rest survives a block boundary, feeders stay in front, and the peak head count falls as the limit tightens |
 | `tests/scheduleStress.test.ts` | a whole day: three categories, two courts, byes, a group stage, a third-place match, players in two draws |
 | `tests/scheduleBasis.test.ts` | the fingerprint that tells a fresh order of play from a stale one — dates, withdrawals, reordered categories, a knockout slot that only just learned who's in it |
+| `tests/capacity.test.ts` | how large a category may get in each format, checked against what the generators actually produce, and what the organiser is told when a field is too big for its format |
+| `tests/random.test.ts` | the draw's unbiased random integers: the rejection sampling that keeps every seat in the shuffle equally likely |
 | `tests/roundScoring.test.ts` | the semi-final and final scoring overrides |
 | `tests/integration/backend.test.ts` | the tournament lifecycle against a real deployment |
 | `tests/integration/referee.test.ts` | the sign-in door, token forgery, what a referee may and may not do, the per-source and per-tournament lockouts |
@@ -177,8 +198,8 @@ tournaments, so run them against a development deployment, never production.
 | `tests/e2e/public.spec.ts` | the three public views, the shareable link, a link that points at nothing |
 
 The end-to-end suite starts its own Next dev server and drives the real browser: nothing is
-mocked, and every spec creates the tournament it needs, so the whole suite runs in parallel.
-Install the browsers once with `npx playwright install`.
+mocked, and every spec creates the tournament it needs, so the whole suite runs in parallel against
+the deployment in `.env.local`.
 
 ## Deploying
 

@@ -441,3 +441,38 @@ export function formatDuration(minutes: number): string {
   const rest = minutes % 60;
   return rest === 0 ? `${hours} h` : `${hours} h ${rest} m`;
 }
+
+/**
+ * Whether a finished plan still lands inside the tournament's own dates.
+ *
+ * `toClockTime` rolls past midnight on purpose - a match called at 23:40 has
+ * to be printed with tomorrow's date on it or the timetable lies. But rolling
+ * is a property of the clock, not a licence for the tournament to grow: an
+ * organiser who wrote "20 September to 20 September" has told the app how long
+ * the hall is booked for, and fifty matches on two courts at thirty minutes
+ * each do not fit in that hall no matter how the planner arranges them.
+ *
+ * So the end date is enforced rather than decorative. The check runs on the
+ * finished plan, before a single time is written, and the message names both
+ * the overrun and the four levers that close it - because the answer is
+ * usually another court or a shorter match, not a longer tournament.
+ *
+ * Returns null when the plan fits, and the message to show when it does not.
+ */
+export function endDateOverrun(
+  startDate: string,
+  endDate: string | undefined,
+  dayStart: string,
+  lastEndMinute: number,
+): string | null {
+  if (!endDate) return null;
+  const finish = toClockTime(startDate, dayStart, lastEndMinute);
+  // Both are "YYYY-MM-DD", which sorts as text exactly as it sorts as a date.
+  const finishDay = finish.slice(0, 10);
+  if (finishDay <= endDate) return null;
+  return (
+    `This order of play finishes at ${clockOf(finish)} on ${finishDay}, which is past the ` +
+    `tournament's end date of ${endDate}. Add a court, shorten the matches, start the day ` +
+    `earlier, run more categories at once, or move the end date.`
+  );
+}

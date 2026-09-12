@@ -5,6 +5,7 @@ import { requireOrganiser } from "./lib/auth";
 import {
   ScheduleError,
   courtName,
+  endDateOverrun,
   hallLoad,
   parseClockTime,
   planSchedule,
@@ -206,12 +207,23 @@ export const generate = mutation({
       throw error;
     }
 
+    // The whole plan has to fit inside the dates the organiser booked the hall
+    // for. Checked here, on the finished plan and before the first patch, so a
+    // tournament that does not fit is refused outright rather than half
+    // written into the matches and discovered on the timetable afterwards.
+    const lastEnd = slots.reduce((latest, slot) => Math.max(latest, slot.endMinute), 0);
+    const overrun = endDateOverrun(
+      tournament.startDate,
+      tournament.endDate,
+      args.dayStart,
+      lastEnd,
+    );
+    if (overrun) throw new ConvexError(overrun);
+
     const now = Date.now();
     const placed = new Set<string>();
-    let lastEnd = 0;
     for (const slot of slots) {
       placed.add(slot.matchId);
-      lastEnd = Math.max(lastEnd, slot.endMinute);
       await ctx.db.patch(slot.matchId as Id<"matches">, {
         scheduledAt: toClockTime(tournament.startDate, args.dayStart, slot.startMinute),
         scheduleOffset: slot.startMinute,

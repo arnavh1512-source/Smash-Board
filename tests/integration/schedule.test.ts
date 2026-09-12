@@ -284,3 +284,103 @@ describe("a knockout slot whose participants are decided after the plan is made"
     expect((await client.query(api.schedule.status, { tournamentId }))?.stale).toBe(false);
   }, 60_000);
 });
+
+/**
+ * A tournament cannot be planned past its own end date.
+ *
+ * The timetable is allowed to roll past midnight - a match called at 23:40 has
+ * to print with tomorrow's date on it - but that is a property of the clock,
+ * not permission for a one-day tournament to become a two-day one. Sixteen
+ * entrants on one court at sixty minutes each is fifteen hours of play, which
+ * does not fit in a hall booked for a single day however the planner arranges
+ * it, so the plan is refused before a single match is given a time.
+ */
+describe("an order of play has to fit inside the tournament's own dates", () => {
+  let tournamentId: Id<"tournaments">;
+  let token: string;
+  let eventId: Id<"events">;
+
+  const ONE_COURT_LONG_MATCHES = {
+    dayStart: "09:00",
+    matchMinutes: 60,
+    restMinutes: 30,
+    courts: 1,
+    categoriesAtOnce: 24,
+  };
+
+  beforeAll(async () => {
+    const created = await client.mutation(api.tournaments.create, {
+      name: `End Date ${Date.now()}`,
+      venue: "Ahmedabad",
+      startDate: "2026-11-20",
+      endDate: "2026-11-20",
+      pin: PIN,
+      isPublic: false,
+    });
+    tournamentId = created.tournamentId;
+    token = created.token;
+
+    eventId = await client.mutation(api.events.create, {
+      tournamentId,
+      token,
+      name: "Men's Singles",
+      teamSize: 1,
+      format: "knockout",
+      scoring: DEFAULT_SCORING,
+      thirdPlace: false,
+      groupCount: 2,
+      advancePerGroup: 2,
+      doubleRound: false,
+    });
+    await client.mutation(api.entries.addMany, { eventId, token, text: players(16) });
+    await client.mutation(api.draws.generate, { eventId, token, randomise: false });
+  }, 120_000);
+
+  afterAll(async () => {
+    await client.mutation(api.tournaments.remove, { tournamentId, token });
+  }, 60_000);
+
+  it("refuses a plan that would run past the last day, and says by how much", async () => {
+    const message = await rejects(
+      client.mutation(api.schedule.generate, { tournamentId, token, ...ONE_COURT_LONG_MATCHES }),
+    );
+    expect(message).toMatch(/end date of 2026-11-20/);
+    expect(message).toMatch(/2026-11-21/);
+    expect(message).toMatch(/court/i);
+  });
+
+  it("leaves every match without a time, rather than half a timetable", async () => {
+    // The check runs on the finished plan and before the first write, so a
+    // refusal is a refusal: nothing is left booked from the attempt.
+    const matches = await client.query(api.matches.listByEvent, { eventId });
+    expect(matches.length).toBeGreaterThan(0);
+    expect(matches.every((match) => !match.scheduledAt)).toBe(true);
+    expect(await client.query(api.schedule.status, { tournamentId })).toBeNull();
+  });
+
+  it("takes the same field once there are enough courts to finish in the day", async () => {
+    const outcome = await client.mutation(api.schedule.generate, {
+      tournamentId,
+      token,
+      ...ONE_COURT_LONG_MATCHES,
+      courts: 4,
+      matchMinutes: 30,
+    });
+    expect(outcome.scheduled).toBeGreaterThan(0);
+    expect(outcome.lastFinish.slice(0, 10)).toBe("2026-11-20");
+  }, 60_000);
+
+  it("takes the long plan too, once the organiser books the hall for a second day", async () => {
+    await client.mutation(api.tournaments.update, {
+      tournamentId,
+      token,
+      endDate: "2026-11-21",
+    });
+    const outcome = await client.mutation(api.schedule.generate, {
+      tournamentId,
+      token,
+      ...ONE_COURT_LONG_MATCHES,
+    });
+    expect(outcome.lastFinish.slice(0, 10)).toBe("2026-11-21");
+  }, 60_000);
+});

@@ -12,6 +12,7 @@ import {
   type DraftMatch,
 } from "../src/lib/draw";
 import { hasPlayedResult } from "../src/lib/results";
+import { randomBelow } from "../src/lib/random";
 import {
   capacityMessage,
   matchesForDraw,
@@ -189,9 +190,7 @@ export const clear = mutation({
 /** Fisher-Yates, using the runtime's cryptographic RNG. */
 function shuffle<T>(items: T[]): void {
   for (let i = items.length - 1; i > 0; i--) {
-    const bytes = new Uint32Array(1);
-    crypto.getRandomValues(bytes);
-    const j = bytes[0] % (i + 1);
+    const j = randomBelow(i + 1);
     [items[i], items[j]] = [items[j], items[i]];
   }
 }
