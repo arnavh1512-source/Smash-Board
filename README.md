@@ -12,7 +12,8 @@ a score entered by the organiser appears on every open scoreboard without a refr
 - **Scoring rules** — games to 11, 15, 21 or any custom target; single game or best of 3, 5 or 7;
   ending on deuce (win by two, with an optional cap) or on a golden point.
 - **Draw formats** — knockout with seeding and byes, round robin (single or double), or groups
-  feeding a knockout.
+  feeding a knockout. Up to 32 groups, named the way a spreadsheet names columns: A to Z, then
+  AA to AF.
 - **Entrants** — add one at a time or paste a whole list. Edit, seed, withdraw or remove; removing
   an entrant scrubs them from the draw so no match points at a deleted row.
 - **Results** — enter a score as each game finishes. Winners advance automatically, corrections

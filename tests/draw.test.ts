@@ -4,6 +4,7 @@ import {
   generateGroupsKnockout,
   generateKnockout,
   generateRoundRobin,
+  groupLabel,
   knockoutFeed,
   knockoutRoundName,
   seedOrder,
@@ -260,5 +261,65 @@ describe("generateGroupsKnockout", () => {
       thirdPlace: true,
     });
     expect(matches.filter((m) => m.isThirdPlace)).toHaveLength(1);
+  });
+});
+
+describe("groupLabel", () => {
+  it("names the first twenty-six groups after the alphabet", () => {
+    expect(groupLabel(0)).toBe("A");
+    expect(groupLabel(1)).toBe("B");
+    expect(groupLabel(25)).toBe("Z");
+  });
+
+  it("carries into two letters past Z, the way a spreadsheet column does", () => {
+    expect(groupLabel(26)).toBe("AA");
+    expect(groupLabel(27)).toBe("AB");
+    // 32 groups is the most a category allows, so AF is the last name needed.
+    expect(groupLabel(31)).toBe("AF");
+    expect(groupLabel(51)).toBe("AZ");
+    expect(groupLabel(52)).toBe("BA");
+  });
+
+  it("never emits anything but capital letters", () => {
+    for (let index = 0; index < 32; index++) {
+      expect(groupLabel(index)).toMatch(/^[A-Z]+$/);
+    }
+  });
+
+  it("gives every group a name of its own", () => {
+    const names = Array.from({ length: 32 }, (_, index) => groupLabel(index));
+    expect(new Set(names).size).toBe(32);
+  });
+});
+
+describe("generateGroupsKnockout at the largest allowed group count", () => {
+  /** The regex `clearGroupQualifiers` finds a corrected group's slot with. */
+  const QUALIFIER_LABEL = /^\d+(?:st|nd|rd|th) in Group [A-Z]+$/;
+
+  const matches = generateGroupsKnockout(ids(64), {
+    groupCount: 32,
+    advancePerGroup: 1,
+    doubleRound: false,
+    thirdPlace: false,
+  });
+  const labels = matches
+    .filter((m) => m.stage === "knockout" && m.round === 0)
+    .flatMap((m) => [m.aLabel, m.bLabel])
+    .filter((label): label is string => label !== null);
+
+  it("labels a slot for every one of the thirty-two groups", () => {
+    expect(new Set(labels).size).toBe(32);
+    expect(labels).toContain("1st in Group Z");
+    expect(labels).toContain("1st in Group AA");
+    expect(labels).toContain("1st in Group AF");
+  });
+
+  it("writes labels the qualifier cleanup can still recognise", () => {
+    // Character arithmetic used to run past Z into "[", "\\", "]" — names no
+    // organiser could read and, worse, names this regex does not match, so a
+    // corrected group result could not find its knockout slot again.
+    for (const label of labels) {
+      expect(label).toMatch(QUALIFIER_LABEL);
+    }
   });
 });

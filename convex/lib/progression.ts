@@ -11,7 +11,12 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { computeStandings } from "../../src/lib/standings";
 import { entryName } from "../../src/lib/display";
-import { countKnockoutRounds, knockoutFeed, knockoutRoundName } from "../../src/lib/draw";
+import {
+  countKnockoutRounds,
+  groupLabel,
+  knockoutFeed,
+  knockoutRoundName,
+} from "../../src/lib/draw";
 import {
   evaluateMatch,
   scoringForRound,
@@ -366,9 +371,11 @@ export async function fillKnockoutFromGroups(
   const ordinal = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`);
   const lookup = new Map<string, Id<"entries">>();
   for (const [groupIndex, ids] of placings) {
-    const letter = String.fromCharCode(65 + groupIndex);
+    // Same helper the draw labelled the slots with, so the two spellings of a
+    // group name cannot drift apart and leave a slot unfindable.
+    const label = groupLabel(groupIndex);
     ids.forEach((id, position) => {
-      lookup.set(`${ordinal(position + 1)} in Group ${letter}`, id as Id<"entries">);
+      lookup.set(`${ordinal(position + 1)} in Group ${label}`, id as Id<"entries">);
     });
   }
 

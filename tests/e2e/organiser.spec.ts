@@ -82,17 +82,32 @@ test.describe("organiser", () => {
 
     // Bulk paste is the other door in, and it has to close the same way: a
     // single-name line silently becoming a "doubles" entrant of one was the
-    // bug this whole feature came from.
+    // bug this whole feature came from. A line with three names is the same
+    // bug from the other side - a missed newline quietly losing a player.
     await page.getByRole("button", { name: "Paste a list" }).click();
     await page
       .getByLabel("Paste a list")
-      .fill("Anita Rao / Priya Shah\nLonely Player\nRohan Mehta / Dev Patel");
+      .fill(
+        [
+          "Anita Rao / Priya Shah",
+          "Lonely Player",
+          "Tara Bose / Ila Kaur / Meera Iyer",
+          "Rohan Mehta / Dev Patel",
+        ].join("\n"),
+      );
     await page.getByRole("button", { name: "Add all" }).click();
 
-    await expect(page.getByText(/Skipped 1: Lonely Player \(needs two players\)/)).toBeVisible();
+    await expect(page.getByText(/Skipped 2:/)).toBeVisible();
+    await expect(
+      page.getByText(/Lonely Player \(needs exactly two players\)/),
+    ).toBeVisible();
+    await expect(
+      page.getByText(/Tara Bose \/ Ila Kaur \/ Meera Iyer \(needs exactly two players\)/),
+    ).toBeVisible();
     await expect(page.getByText("Anita Rao / Priya Shah", { exact: true })).toBeVisible();
     await expect(page.getByText("Rohan Mehta / Dev Patel", { exact: true })).toBeVisible();
     await expect(page.getByText("Lonely Player", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Tara Bose / Ila Kaur", { exact: true })).toHaveCount(0);
   });
 
   test("warns when a doubles-sounding category is set to singles", async ({ page }) => {

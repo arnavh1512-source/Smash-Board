@@ -223,6 +223,27 @@ export function generateRoundRobin(
 }
 
 /**
+ * What a group is called on the wall chart: A, B, ... Z, AA, AB, ... AF.
+ *
+ * Spreadsheet-column counting, not `String.fromCharCode(65 + index)`. Plain
+ * character arithmetic runs off the end of the alphabet at the 27th group and
+ * starts emitting punctuation — "Group [", "Group \\" — which is not a name
+ * anybody can read, and worse, is not a name the qualifier labels can be
+ * parsed back out of when a corrected group result has to find its slot again.
+ * The category settings allow up to 32 groups, so the labels have to reach 32.
+ */
+export function groupLabel(index: number): string {
+  let remaining = index + 1;
+  let label = "";
+  while (remaining > 0) {
+    remaining -= 1;
+    label = String.fromCharCode(65 + (remaining % 26)) + label;
+    remaining = Math.floor(remaining / 26);
+  }
+  return label;
+}
+
+/**
  * Snake-seed a field into `groupCount` groups so the strongest entrants spread
  * evenly: group 0 gets seeds 1 and 2n, group 1 gets 2 and 2n-1, and so on.
  */
@@ -307,9 +328,8 @@ export function generateGroupsKnockout(
     if (seed > qualifiers) return null;
     const place = Math.floor((seed - 1) / options.groupCount) + 1;
     const groupIdx = (seed - 1) % options.groupCount;
-    const letter = String.fromCharCode(65 + groupIdx);
     const suffix = place === 1 ? "1st" : place === 2 ? "2nd" : place === 3 ? "3rd" : `${place}th`;
-    return `${suffix} in Group ${letter}`;
+    return `${suffix} in Group ${groupLabel(groupIdx)}`;
   };
 
   for (let round = 0; round < totalRounds; round++) {

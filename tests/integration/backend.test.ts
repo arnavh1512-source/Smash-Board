@@ -454,3 +454,112 @@ describe("event settings", () => {
     await client.mutation(api.events.remove, { eventId: lockId, token });
   });
 });
+
+describe("doubles bulk import needs exactly two names", () => {
+  let pairsId: Id<"events">;
+
+  beforeAll(async () => {
+    pairsId = await client.mutation(api.events.create, {
+      tournamentId,
+      token,
+      name: "Mixed Doubles Import",
+      teamSize: 2,
+      format: "knockout",
+      scoring: DEFAULT_SCORING,
+      thirdPlace: false,
+      groupCount: 2,
+      advancePerGroup: 2,
+      doubleRound: false,
+    });
+  }, 60_000);
+
+  it("skips a line carrying three names rather than dropping one of them", async () => {
+    const result = await client.mutation(api.entries.addMany, {
+      eventId: pairsId,
+      token,
+      text: "Anita Rao / Priya Shah / Rhea Nair",
+    });
+    expect(result.added).toBe(0);
+    expect(result.skipped.join(" ")).toMatch(/needs exactly two players/i);
+
+    const rows = await client.query(api.entries.listByEvent, { eventId: pairsId });
+    expect(rows).toHaveLength(0);
+  });
+
+  it("keeps the good lines and reports only the overloaded one", async () => {
+    const result = await client.mutation(api.entries.addMany, {
+      eventId: pairsId,
+      token,
+      text: [
+        "Anita Rao / Priya Shah",
+        // A missing newline between two pairs is how this actually happens.
+        "Rhea Nair / Sonal Desai / Kiran Menon / Meera Iyer",
+        "Tara Bose / Ila Kaur",
+      ].join("\n"),
+    });
+    expect(result.added).toBe(2);
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]).toMatch(/needs exactly two players/i);
+
+    const rows = await client.query(api.entries.listByEvent, { eventId: pairsId });
+    expect(rows.map((r) => r.playerOne).sort()).toEqual(["Anita Rao", "Tara Bose"]);
+  });
+
+  afterAll(async () => {
+    await client.mutation(api.events.remove, { eventId: pairsId, token });
+  }, 60_000);
+});
+
+describe("tournament dates must exist on the calendar", () => {
+  it.each(["2026-02-31", "2026-02-29", "2026-13-01", "2026-04-31"])(
+    "refuses %s on create",
+    async (startDate) => {
+      const message = await rejects(
+        client.mutation(api.tournaments.create, {
+          name: `Impossible Date ${Date.now()}`,
+          venue: "Ahmedabad",
+          organiserName: "Test Organiser",
+          organiserPhone: "+918140081461",
+          pin: PIN,
+          isPublic: false,
+          startDate,
+        }),
+      );
+      expect(message).toMatch(/start date must be a valid date/i);
+    },
+  );
+
+  it("refuses an impossible end date on update and leaves the stored one alone", async () => {
+    const before = await client.query(api.tournaments.getBySlug, { slug });
+    const message = await rejects(
+      client.mutation(api.tournaments.update, { tournamentId, token, endDate: "2026-06-31" }),
+    );
+    expect(message).toMatch(/end date must be a valid date/i);
+
+    const after = await client.query(api.tournaments.getBySlug, { slug });
+    expect(after?.endDate).toBe(before?.endDate);
+  });
+
+  it("accepts a real leap day and a real month end", async () => {
+    const before = await client.query(api.tournaments.getBySlug, { slug });
+
+    // 2028 is a leap year, so 29 February exists; 2026 is not, so it does not.
+    await client.mutation(api.tournaments.update, {
+      tournamentId,
+      token,
+      startDate: "2028-02-29",
+      endDate: "2028-04-30",
+    });
+    const after = await client.query(api.tournaments.getBySlug, { slug });
+    expect(after?.startDate).toBe("2028-02-29");
+    expect(after?.endDate).toBe("2028-04-30");
+
+    // Put the tournament back the way the other suites left it.
+    await client.mutation(api.tournaments.update, {
+      tournamentId,
+      token,
+      startDate: before?.startDate ?? "",
+      endDate: before?.endDate ?? "",
+    });
+  });
+});

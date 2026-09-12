@@ -66,8 +66,22 @@ function cleanText(value: string | undefined, max: number): string | undefined {
 /** The shape `<input type="date">` sends, and the only shape the scheduler can read. */
 const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * A real day on the calendar, not merely ten characters in the right places.
+ *
+ * The shape check alone lets "2026-02-31" through, and the `Date` parser the
+ * scheduler hands it to rolls that silently forward to 3 March — so a typo
+ * would come back as a plausible-looking wrong date rather than as an error.
+ * Round-tripping through UTC catches the rollover: a date that survives is a
+ * date that exists.
+ */
 function assertDateShape(value: string | undefined, label: string): void {
-  if (value !== undefined && !DATE_SHAPE.test(value)) {
+  if (value === undefined) return;
+  if (!DATE_SHAPE.test(value)) {
+    throw new ConvexError(`${label} must be a valid date.`);
+  }
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
     throw new ConvexError(`${label} must be a valid date.`);
   }
 }

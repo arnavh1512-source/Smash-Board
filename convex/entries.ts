@@ -198,8 +198,12 @@ export const addMany = mutation({
         skipped.push(line);
         continue;
       }
-      if (event.teamSize === 2 && players.length < 2) {
-        skipped.push(`${line} (needs two players)`);
+      // Exactly two, not "at least two". A third name on the line means the
+      // organiser meant something the category cannot hold — a typo, a missing
+      // newline, a triple — and quietly dropping it loses a player without a
+      // word. The line comes back on the skipped list instead.
+      if (event.teamSize === 2 && players.length !== 2) {
+        skipped.push(`${line} (needs exactly two players)`);
         continue;
       }
       // Same reason as `add`: silently keeping only the first name is what

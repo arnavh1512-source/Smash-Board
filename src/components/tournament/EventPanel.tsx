@@ -3,6 +3,7 @@
 import type { Doc } from "../../../convex/_generated/dataModel";
 import type { ScoringConfig } from "@/lib/scoring";
 import { scoringSummary } from "@/lib/display";
+import { groupLabel } from "@/lib/draw";
 import { BracketView } from "./BracketView";
 import { StandingsTable } from "./StandingsTable";
 import { MatchRow, type EntryLookup } from "./MatchRow";
@@ -60,7 +61,7 @@ export function EventPanel({
         const inGroup = groupMatches.filter((m) => (m.groupIndex ?? 0) === groupIndex);
         const heading = isRoundRobinOnly
           ? "Standings"
-          : `Group ${String.fromCharCode(65 + groupIndex)}`;
+          : `Group ${groupLabel(groupIndex)}`;
         return (
           <section key={groupIndex}>
             <header className="rule-t2 rule-b bg-[var(--color-surface)] px-4 py-2.5">
