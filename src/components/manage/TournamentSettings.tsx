@@ -221,7 +221,7 @@ function PinForm({
             <Input
               type="password"
               required
-              minLength={4}
+              minLength={6}
               maxLength={32}
               value={newPin}
               onChange={(e) => setNewPin(e.target.value)}
@@ -232,7 +232,7 @@ function PinForm({
             <Input
               type="password"
               required
-              minLength={4}
+              minLength={6}
               maxLength={32}
               value={confirmPin}
               onChange={(e) => setConfirmPin(e.target.value)}
@@ -328,12 +328,12 @@ function RefereePinForm({
       <form onSubmit={save} className="flex flex-col gap-3.5">
         <Field
           label={tournament.hasRefereePin ? "Replace the referee PIN" : "Referee PIN"}
-          hint="4 to 32 characters."
+          hint="6 to 32 characters."
         >
           <Input
             type="password"
             required
-            minLength={4}
+            minLength={6}
             maxLength={32}
             value={value}
             onChange={(e) => setValue(e.target.value)}

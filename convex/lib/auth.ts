@@ -56,7 +56,17 @@ const SOURCE_QUOTA = 3;
 /** A token lasts a tournament day, then the organiser signs in again. */
 export const SESSION_MS = 12 * 60 * 60 * 1000;
 
-export const MIN_PIN_LENGTH = 4;
+/**
+ * Six, not four.
+ *
+ * The stored PIN is a SHA-256 of a per-tournament salt and the PIN, which
+ * keeps plaintext out of the database but is deliberately fast to compute.
+ * Anybody holding a copy of the database could therefore run the whole
+ * four-digit space in a moment. Online guessing is already throttled; this is
+ * about the offline case, and two more characters is the cheapest defence
+ * against it that costs an organiser nothing at the desk.
+ */
+export const MIN_PIN_LENGTH = 6;
 export const MAX_PIN_LENGTH = 64;
 
 function toHex(buffer: ArrayBuffer): string {

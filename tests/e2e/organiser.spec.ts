@@ -110,6 +110,26 @@ test.describe("organiser", () => {
     await expect(page.getByText("Tara Bose / Ila Kaur", { exact: true })).toHaveCount(0);
   });
 
+  test("closes the entry forms once the draw is made", async ({ page }) => {
+    await createTournament(page);
+    await addCategory(page, { name: "Mens Singles" });
+    await openTab(page, "Entrants");
+    for (const player of ["Rohan Mehta", "Dev Patel", "Kabir Shah", "Vivek Nair"]) {
+      await addEntrant(page, player);
+    }
+    await openTab(page, "Draw");
+    await generateDraw(page);
+
+    // The bracket was built from these four and does not rearrange itself, so
+    // a fifth name would sit in the entry list belonging to no match. The way
+    // in is closed rather than left there to be found on the morning.
+    await openTab(page, "Entrants");
+    await expect(page.getByText(/entries for this category are closed/i)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add entrant" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Paste a list" })).toHaveCount(0);
+    await expect(page.getByText("Rohan Mehta", { exact: false }).first()).toBeVisible();
+  });
+
   test("warns when a doubles-sounding category is set to singles", async ({ page }) => {
     await createTournament(page);
     // An empty console offers the category form inline, already open.

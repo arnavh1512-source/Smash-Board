@@ -46,6 +46,20 @@ async function makeTournament(name: string, startDate: string) {
 const players = (count: number) =>
   Array.from({ length: count }, (_, i) => `Player ${String(i + 1).padStart(2, "0")}`).join("\n");
 
+/** See the note on the same helper in backend.test.ts - production redacts `message`. */
+async function rejects(call: Promise<unknown>): Promise<string> {
+  try {
+    await call;
+  } catch (error) {
+    if (error && typeof error === "object" && "data" in error) {
+      const data = (error as { data: unknown }).data;
+      if (typeof data === "string") return data;
+    }
+    return error instanceof Error ? error.message : String(error);
+  }
+  throw new Error("Expected the call to be rejected, but it succeeded.");
+}
+
 describe("whether a generated plan still matches the tournament", () => {
   let tournamentId: Id<"tournaments">;
   let token: string;
@@ -104,6 +118,25 @@ describe("whether a generated plan still matches the tournament", () => {
 
     await client.mutation(api.schedule.generate, { tournamentId, token, ...SCHEDULE_OPTIONS });
     expect((await client.query(api.schedule.status, { tournamentId }))?.stale).toBe(false);
+  }, 60_000);
+
+  it("cannot be quietly outrun by a late entrant, because entries are closed", async () => {
+    await client.mutation(api.schedule.generate, { tournamentId, token, ...SCHEDULE_OPTIONS });
+    const before = await client.query(api.schedule.status, { tournamentId });
+    expect(before?.stale).toBe(false);
+
+    // This is the hole the guard closes. The plan is fingerprinted from the
+    // planner's matches, and a person with no match changes no fingerprint -
+    // so an entrant added after the draw would leave the plan looking fresh
+    // while the entry list and the bracket disagreed about who is playing.
+    const message = await rejects(
+      client.mutation(api.entries.add, { eventId, token, playerOne: "Late Arrival" }),
+    );
+    expect(message).toMatch(/entries for this category are closed/i);
+
+    const after = await client.query(api.schedule.status, { tournamentId });
+    expect(after?.stale).toBe(false);
+    expect(after?.generatedAt).toBe(before?.generatedAt);
   }, 60_000);
 
   it("goes stale the moment the tournament's start date moves, and fresh again once replanned", async () => {

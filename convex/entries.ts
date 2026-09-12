@@ -66,6 +66,30 @@ async function assertSeedFree(
   }
 }
 
+/**
+ * The invariant: once a draw exists, the field is closed.
+ *
+ * A bracket is built from the entrants who were in the category at the moment
+ * it was drawn, and it does not rearrange itself afterwards. Everything else
+ * about the entry list already respects that - seeds are fixed once the draw
+ * is made, and an entrant can no longer be deleted, only withdrawn - but a new
+ * name could still be inserted, and it would sit in the entry list belonging
+ * to no match. The order of play would not even notice: it is fingerprinted
+ * from the planner's matches, and a person with no match changes nothing. So
+ * the organiser would see nine entrants over an eight-player bracket with
+ * nothing anywhere saying which one is not playing.
+ *
+ * Entries close when the draw is made. After that the ways to change the field
+ * are to withdraw somebody, or to clear the draw and make it again.
+ */
+function assertEntriesOpen(event: Doc<"events">): void {
+  if (event.drawGeneratedAt !== null) {
+    throw new ConvexError(
+      "The draw has already been made, so entries for this category are closed. Clear the draw and generate it again to add anybody else.",
+    );
+  }
+}
+
 async function loadEventForOrganiser(ctx: MutationCtx, eventId: Id<"events">, token: string) {
   const event = await ctx.db.get(eventId);
   if (!event) throw new ConvexError("That category no longer exists.");
@@ -120,6 +144,7 @@ export const add = mutation({
   returns: v.id("entries"),
   handler: async (ctx, args) => {
     const event = await loadEventForOrganiser(ctx, args.eventId, args.token);
+    assertEntriesOpen(event);
 
     const playerOne = clean(args.playerOne, 80);
     if (!playerOne) throw new ConvexError("Enter the player's name.");
@@ -171,6 +196,7 @@ export const addMany = mutation({
   returns: v.object({ added: v.number(), skipped: v.array(v.string()) }),
   handler: async (ctx, args) => {
     const event = await loadEventForOrganiser(ctx, args.eventId, args.token);
+    assertEntriesOpen(event);
 
     const existing = await ctx.db
       .query("entries")

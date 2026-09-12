@@ -372,7 +372,7 @@ export function EntryManager({
           </span>
         </div>
 
-        <div className="flex">
+        <div className="flex" hidden={event.drawGeneratedAt !== null}>
           {(["one", "bulk"] as const).map((option) => (
             <button
               key={option}
@@ -405,14 +405,12 @@ export function EntryManager({
 
         {event.drawGeneratedAt ? (
           <Alert kind="info">
-            The draw is already made, so entrants can no longer be deleted — withdraw them instead
-            and their remaining matches are awarded to their opponents. A new entrant only appears
-            once you generate the draw again. Seeds are fixed too — the bracket was built from the
-            seeds as they stood and does not rearrange itself, so reseeding means drawing again.
+            The draw is already made, so entries for this category are closed. Withdraw an entrant
+            instead of deleting them and their remaining matches are awarded to their opponents.
+            Seeds are fixed too — the bracket was built from the seeds as they stood and does not
+            rearrange itself. To take a late entry, clear the draw and generate it again.
           </Alert>
-        ) : null}
-
-        {mode === "one" ? (
+        ) : mode === "one" ? (
           <AddEntryForm event={event} token={token} onError={setError} />
         ) : (
           <BulkAddForm

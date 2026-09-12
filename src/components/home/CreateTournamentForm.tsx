@@ -151,11 +151,11 @@ export function CreateTournamentForm() {
           you carry on.
         </p>
 
-        <Field label="Organiser PIN" hint="At least 4 characters.">
+        <Field label="Organiser PIN" hint="At least 6 characters.">
           <Input
             type="password"
             required
-            minLength={4}
+            minLength={6}
             maxLength={64}
             value={pin}
             onChange={(e) => setPin(e.target.value)}
@@ -168,7 +168,7 @@ export function CreateTournamentForm() {
           <Input
             type="password"
             required
-            minLength={4}
+            minLength={6}
             maxLength={64}
             value={confirmPin}
             onChange={(e) => setConfirmPin(e.target.value)}

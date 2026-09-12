@@ -581,3 +581,70 @@ describe("tournament dates must exist on the calendar", () => {
     });
   });
 });
+
+describe("entries close when the draw is made", () => {
+  let closedId: Id<"events">;
+
+  beforeAll(async () => {
+    closedId = await client.mutation(api.events.create, {
+      tournamentId,
+      token,
+      name: "Entries Closed Test",
+      teamSize: 1,
+      format: "knockout",
+      scoring: DEFAULT_SCORING,
+      thirdPlace: false,
+      groupCount: 2,
+      advancePerGroup: 2,
+      doubleRound: false,
+    });
+    await client.mutation(api.entries.addMany, {
+      eventId: closedId,
+      token,
+      text: ["Player One", "Player Two", "Player Three", "Player Four"].join("\n"),
+    });
+    await client.mutation(api.draws.generate, { eventId: closedId, token, randomise: false });
+  }, 60_000);
+
+  it("refuses a late entrant one at a time, and leaves the bracket alone", async () => {
+    const before = await client.query(api.matches.listByEvent, { eventId: closedId });
+
+    const message = await rejects(
+      client.mutation(api.entries.add, { eventId: closedId, token, playerOne: "Player Nine" }),
+    );
+    expect(message).toMatch(/entries for this category are closed/i);
+
+    // A ninth name in the entry list over an eight-player bracket is the state
+    // this guard exists to prevent, so check the list as well as the matches.
+    const rows = await client.query(api.entries.listByEvent, { eventId: closedId });
+    expect(rows).toHaveLength(4);
+    expect(rows.some((r) => r.playerOne === "Player Nine")).toBe(false);
+    expect(await client.query(api.matches.listByEvent, { eventId: closedId })).toEqual(before);
+  });
+
+  it("refuses a pasted list too, rather than skipping the lines one by one", async () => {
+    const message = await rejects(
+      client.mutation(api.entries.addMany, {
+        eventId: closedId,
+        token,
+        text: ["Player Nine", "Player Ten"].join("\n"),
+      }),
+    );
+    expect(message).toMatch(/entries for this category are closed/i);
+
+    const rows = await client.query(api.entries.listByEvent, { eventId: closedId });
+    expect(rows).toHaveLength(4);
+  });
+
+  it("opens again once the draw is cleared", async () => {
+    await client.mutation(api.draws.clear, { eventId: closedId, token });
+    await client.mutation(api.entries.add, { eventId: closedId, token, playerOne: "Player Nine" });
+
+    const rows = await client.query(api.entries.listByEvent, { eventId: closedId });
+    expect(rows).toHaveLength(5);
+  });
+
+  afterAll(async () => {
+    await client.mutation(api.events.remove, { eventId: closedId, token });
+  }, 60_000);
+});
