@@ -278,6 +278,15 @@ export const update = mutation({
       if (event?.teamSize === 2 && !partner) {
         throw new ConvexError("This is a doubles category, so enter both players.");
       }
+      // Same refusal add() gives. Quietly discarding the partner here would
+      // let an edit that looks like it worked leave half a pair on the sheet.
+      // Blanking the field is still allowed: that is how a partner is cleared
+      // after a category is switched back to singles.
+      if (event?.teamSize === 1 && partner) {
+        throw new ConvexError(
+          "This is a singles category. Change it to doubles before entering a pair.",
+        );
+      }
       patch.playerTwo = event?.teamSize === 2 ? partner : undefined;
     }
     if (args.club !== undefined) patch.club = clean(args.club, 80);

@@ -379,6 +379,24 @@ describe("doubles entrants keep both names", () => {
     expect(message).toMatch(/both players/i);
   });
 
+  it("refuses an edit that adds a partner to a singles entrant", async () => {
+    await client.mutation(api.entries.add, { eventId: singlesId, token, playerOne: "Solo Tester" });
+    const rows = await client.query(api.entries.listByEvent, { eventId: singlesId });
+    const solo = rows.find((r) => r.playerOne === "Solo Tester")!;
+
+    // add() already refuses this. An edit that quietly drops the partner would
+    // report success and leave the organiser thinking the pair went in.
+    const message = await rejects(
+      client.mutation(api.entries.update, { entryId: solo._id, token, playerTwo: "Priya Shah" }),
+    );
+    expect(message).toMatch(/singles/i);
+
+    const after = await client.query(api.entries.listByEvent, { eventId: singlesId });
+    expect(after.find((r) => r._id === solo._id)!.playerTwo).toBeUndefined();
+
+    await client.mutation(api.entries.remove, { entryId: solo._id, token });
+  });
+
   it("refuses to draw a doubles category holding a half pair", async () => {
     // Reaching this state needs the category switched to doubles after the
     // entrants went in, which is exactly how the original bug was reported.
