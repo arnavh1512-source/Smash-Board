@@ -98,7 +98,7 @@ function fingerprint(text: string): string {
 }
 
 /**
- * A fingerprint of everything the planner reads.
+ * A fingerprint of everything the planner reads from tournament state.
  *
  * An order of play is not a permanent fact. It is an answer derived from the
  * tournament as it stood at the minute it was generated, and the tournament
@@ -117,6 +117,11 @@ function fingerprint(text: string): string {
  * time; the end date decides whether the plan was allowed at all, so a plan
  * that fitted a two-day booking must not stay "current" once the booking is
  * cut to one day.
+ *
+ * The schedule options - day start, match and rest minutes, courts, categories
+ * at once - are not part of it. They are planner input too, but they live on
+ * the stored plan and are only ever written by generating a new one, so they
+ * cannot drift away from the plan they produced.
  */
 export function scheduleBasis(
   startDate: string,
