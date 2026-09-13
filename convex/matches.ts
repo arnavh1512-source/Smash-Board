@@ -13,7 +13,7 @@ import {
 } from "./lib/progression";
 import { evaluateMatch, ScoringError, type SetScore } from "../src/lib/scoring";
 import { hasPlayedResult } from "../src/lib/results";
-import { isTimestamp } from "../src/lib/schedule";
+import { isTimestamp, scheduledAtOutsideTournament } from "../src/lib/schedule";
 
 const matchValidator = v.object({
   _id: v.id("matches"),
@@ -266,6 +266,11 @@ export const setDetails = mutation({
       const when = args.scheduledAt.trim();
       if (when && !isTimestamp(when)) {
         throw new ConvexError("The time must be a real date and time, like 2026-09-12T09:30.");
+      }
+      if (when) {
+        const tournament = await ctx.db.get(match.tournamentId);
+        const outside = scheduledAtOutsideTournament(when, tournament?.startDate, tournament?.endDate);
+        if (outside) throw new ConvexError(outside);
       }
       patch.scheduledAt = when || undefined;
     }

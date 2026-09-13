@@ -46,6 +46,8 @@ export function ScoreDialog({
   scoring,
   entries,
   token,
+  startDate,
+  endDate,
   onClose,
 }: {
   match: Doc<"matches">;
@@ -54,6 +56,9 @@ export function ScoreDialog({
   scoring: ScoringConfig;
   entries: EntryLookup;
   token: string;
+  /** The tournament's dates, which bound the time picker as the server does. */
+  startDate?: string;
+  endDate?: string;
   onClose: () => void;
 }) {
   const setScore = useMutation(api.matches.setScore);
@@ -307,6 +312,8 @@ export function ScoreDialog({
                 <Input
                   type="datetime-local"
                   value={scheduledAt}
+                  min={startDate ? `${startDate}T00:00` : undefined}
+                  max={endDate ? `${endDate}T23:59` : undefined}
                   onChange={(e) => setScheduledAt(e.target.value)}
                 />
               </Field>

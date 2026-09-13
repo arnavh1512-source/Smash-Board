@@ -1058,14 +1058,17 @@ describe("a walkover is corrected the same way a score is", () => {
   });
 
   it("takes the shape the planner writes, and takes a blank to clear it", async () => {
+    // Inside the tournament's own dates, which a hand-typed time must respect.
+    const tournament = await client.query(api.tournaments.getBySlug, { slug });
+    const when = `${tournament?.startDate ?? "2026-09-12"}T09:30`;
     await client.mutation(api.matches.setDetails, {
       matchId: awarded,
       token,
-      scheduledAt: "2026-09-12T09:30",
+      scheduledAt: when,
       court: "Court 2",
     });
     let after = await client.query(api.matches.listByEvent, { eventId: awardId });
-    expect(after.find((row) => row._id === awarded)!.scheduledAt).toBe("2026-09-12T09:30");
+    expect(after.find((row) => row._id === awarded)!.scheduledAt).toBe(when);
 
     await client.mutation(api.matches.setDetails, { matchId: awarded, token, scheduledAt: "" });
     after = await client.query(api.matches.listByEvent, { eventId: awardId });

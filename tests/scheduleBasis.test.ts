@@ -67,7 +67,8 @@ function draw(): PlannerMatch[] {
   ];
 }
 
-const basis = (matches: PlannerMatch[], startDate = START) => scheduleBasis(startDate, matches);
+const basis = (matches: PlannerMatch[], startDate = START, endDate?: string) =>
+  scheduleBasis(startDate, endDate, matches);
 
 /** The same draw with one match replaced. */
 function replacing(id: string, change: Partial<PlannerMatch>): PlannerMatch[] {
@@ -89,6 +90,18 @@ describe("the fingerprint a plan is stored with", () => {
 
   it("changes when the tournament moves to another date", () => {
     expect(basis(draw(), "2026-11-15")).not.toBe(basis(draw()));
+  });
+
+  it("changes when the end date moves, or is set or cleared", () => {
+    // A plan that fitted a two-day booking is not current once it is one day.
+    const twoDays = basis(draw(), START, "2026-11-21");
+    expect(basis(draw(), START, "2026-11-20")).not.toBe(twoDays);
+    expect(basis(draw(), START)).not.toBe(twoDays);
+    expect(basis(draw(), START, "2026-11-21")).toBe(twoDays);
+  });
+
+  it("cannot mistake a moved start for a moved end", () => {
+    expect(basis(draw(), "2026-11-20", "2026-11-21")).not.toBe(basis(draw(), "2026-11-21", "2026-11-20"));
   });
 
   it("changes when an entrant withdraws and their match becomes a walkover", () => {

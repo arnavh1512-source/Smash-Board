@@ -78,7 +78,9 @@ has not happened yet and throwing away something that has.
   it — but that is the clock, not permission for a one-day tournament to become a two-day one. A
   plan that does not fit inside the dates the hall was booked for is refused before a single match
   is given a time, and the message names the overrun and the levers that close it: another court, a
-  shorter match, an earlier start, more categories at once, or a later end date.
+  shorter match, an earlier start, more categories at once, or a later end date. The same dates
+  bound a time typed into a single match by hand - nothing before the first day or after the last -
+  and moving either date marks an existing order of play as out of date.
 - **The organiser's phone number is private unless it is published.** A tick box on the
   tournament form decides whether the number travels with the public page; without it the number
   stays on the server and only the console can read it back, behind the PIN.
@@ -191,7 +193,7 @@ npx playwright install
 | `tests/schedule.test.ts` | court packing, rest between matches, the court-count cap, clock maths |
 | `tests/hallCrowding.test.ts` | the hall limit: categories run in blocks, rest survives a block boundary, feeders stay in front, and the peak head count falls as the limit tightens |
 | `tests/scheduleStress.test.ts` | a whole day: three categories, two courts, byes, a group stage, a third-place match, players in two draws |
-| `tests/scheduleBasis.test.ts` | the fingerprint that tells a fresh order of play from a stale one — dates, withdrawals, reordered categories, a knockout slot that only just learned who's in it |
+| `tests/scheduleBasis.test.ts` | the fingerprint that tells a fresh order of play from a stale one — start and end dates, withdrawals, reordered categories, a knockout slot that only just learned who's in it |
 | `tests/capacity.test.ts` | how large a category may get in each format, checked against what the generators actually produce, and what the organiser is told when a field is too big for its format |
 | `tests/playerMatches.test.ts` | one player's day pulled out of the whole tournament: singles and doubles together, played matches first then timetable order, the match to get ready for, round names across mixed categories |
 | `tests/random.test.ts` | the draw's unbiased random integers: the rejection sampling that keeps every seat in the shuffle equally likely |
@@ -200,7 +202,7 @@ npx playwright install
 | `tests/integration/referee.test.ts` | the sign-in door, token forgery, what a referee may and may not do, the per-source and per-tournament lockouts |
 | `tests/integration/scenarios.test.ts` | a 20-entrant knockout and a 16-entrant group stage played end to end, plus the guards above |
 | `tests/integration/withdrawal.test.ts` | a player who wins two group matches and then pulls out, and the knockout that has to fill without them, from every finishing position in the group |
-| `tests/integration/schedule.test.ts` | the order of play going stale after a withdrawal, a reordered category or a moved start date, and a knockout slot whose court booking is only trustworthy once the group stage feeding it is settled, and a plan remade after a result that gives the played match no court |
+| `tests/integration/schedule.test.ts` | the order of play going stale after a withdrawal, a reordered category or a moved start or end date, a hand-typed match time outside the tournament's dates, and a knockout slot whose court booking is only trustworthy once the group stage feeding it is settled, and a plan remade after a result that gives the played match no court |
 | `tests/e2e/home.spec.ts` | the landing page, its metadata and structured data, the theme memory, the phone layout |
 | `tests/e2e/auth.spec.ts` | the PIN gate, the five-try per-device lockout, a session that survives a reload, what a stranger may read, the referee's own door |
 | `tests/e2e/organiser.spec.ts` | a category run from empty to a published result, doubles pairs, bulk entry |

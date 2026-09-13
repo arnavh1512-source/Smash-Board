@@ -383,6 +383,59 @@ describe("an order of play has to fit inside the tournament's own dates", () => 
     });
     expect(outcome.lastFinish.slice(0, 10)).toBe("2026-11-21");
   }, 60_000);
+
+  it("goes stale the moment the end date is pulled back in, because the plan no longer fits", async () => {
+    expect((await client.query(api.schedule.status, { tournamentId }))?.stale).toBe(false);
+    await client.mutation(api.tournaments.update, { tournamentId, token, endDate: "2026-11-20" });
+    expect((await client.query(api.schedule.status, { tournamentId }))?.stale).toBe(true);
+
+    // The stale plan cannot simply be remade: it no longer fits the one day.
+    const message = await rejects(
+      client.mutation(api.schedule.generate, { tournamentId, token, ...ONE_COURT_LONG_MATCHES }),
+    );
+    expect(message).toMatch(/end date of 2026-11-20/);
+  }, 60_000);
+
+  describe("a time typed into one match by hand", () => {
+    let matchId: Id<"matches">;
+
+    beforeAll(async () => {
+      // By now the tournament runs on 2026-11-20 only.
+      const matches = await client.query(api.matches.listByEvent, { eventId });
+      matchId = matches[0]._id;
+    });
+
+    const matchNow = async () =>
+      (await client.query(api.matches.listByEvent, { eventId })).find((m) => m._id === matchId)!;
+
+    it("is refused after the last day, and nothing is written", async () => {
+      const before = (await matchNow()).scheduledAt;
+      const message = await rejects(
+        client.mutation(api.matches.setDetails, { matchId, token, scheduledAt: "2026-11-21T09:00" }),
+      );
+      expect(message).toMatch(/ends on 2026-11-20/);
+      expect((await matchNow()).scheduledAt).toBe(before);
+    });
+
+    it("is refused before the first day", async () => {
+      const message = await rejects(
+        client.mutation(api.matches.setDetails, { matchId, token, scheduledAt: "2026-11-19T23:59" }),
+      );
+      expect(message).toMatch(/starts on 2026-11-20/);
+    });
+
+    it("is taken anywhere inside the dates, and a blank still clears it", async () => {
+      await client.mutation(api.matches.setDetails, { matchId, token, scheduledAt: "2026-11-20T23:59" });
+      expect((await matchNow()).scheduledAt).toBe("2026-11-20T23:59");
+      await client.mutation(api.matches.setDetails, { matchId, token, scheduledAt: "" });
+      expect((await matchNow()).scheduledAt).toBeUndefined();
+    });
+
+    it("does not stand in the way of setting the court on its own", async () => {
+      await client.mutation(api.matches.setDetails, { matchId, token, court: "Court 3" });
+      expect((await matchNow()).court).toBe("Court 3");
+    });
+  });
 });
 
 /**

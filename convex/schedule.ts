@@ -166,7 +166,7 @@ export const status = query({
     const tournament = await ctx.db.get(args.tournamentId);
     if (!tournament?.schedule) return null;
     const { planner } = await plannerInput(ctx, args.tournamentId);
-    const basis = scheduleBasis(tournament.startDate ?? "", planner);
+    const basis = scheduleBasis(tournament.startDate ?? "", tournament.endDate, planner);
     return {
       generatedAt: tournament.schedule.generatedAt,
       // A plan made before this check existed carries no fingerprint. It cannot
@@ -265,7 +265,7 @@ export const generate = mutation({
         courts: args.courts,
         categoriesAtOnce: args.categoriesAtOnce,
         generatedAt: now,
-        basis: scheduleBasis(tournament.startDate, planner),
+        basis: scheduleBasis(tournament.startDate, tournament.endDate, planner),
       },
       updatedAt: now,
     });

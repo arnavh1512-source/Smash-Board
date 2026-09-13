@@ -112,8 +112,17 @@ function fingerprint(text: string): string {
  * recomputed when it is read, so anything at all that would change the
  * planner's answer shows up as stale without a mutation having to know that
  * the scheduler exists.
+ *
+ * Both tournament dates are part of it. The start date decides every printed
+ * time; the end date decides whether the plan was allowed at all, so a plan
+ * that fitted a two-day booking must not stay "current" once the booking is
+ * cut to one day.
  */
-export function scheduleBasis(startDate: string, matches: readonly PlannerMatch[]): string {
+export function scheduleBasis(
+  startDate: string,
+  endDate: string | undefined,
+  matches: readonly PlannerMatch[],
+): string {
   const lines = matches
     .map((match) =>
       [
@@ -127,7 +136,7 @@ export function scheduleBasis(startDate: string, matches: readonly PlannerMatch[
       ].join("|"),
     )
     .sort();
-  return fingerprint([startDate, ...lines].join("\n"));
+  return fingerprint([`${startDate}..${endDate ?? ""}`, ...lines].join("\n"));
 }
 
 function assertOptions(options: ScheduleOptions): void {
@@ -459,6 +468,31 @@ export function formatDuration(minutes: number): string {
  *
  * Returns null when the plan fits, and the message to show when it does not.
  */
+/**
+ * Why a hand-entered match time falls outside the tournament's dates, or null
+ * when it does not.
+ *
+ * The planner cannot write a time past the end date, and the organiser typing
+ * a time into one match should not be able to either - nor before the first
+ * day, which no order of play can produce. Only the bounds the tournament has
+ * are applied: an unset date is not a promise to keep.
+ */
+export function scheduledAtOutsideTournament(
+  scheduledAt: string,
+  startDate: string | undefined,
+  endDate: string | undefined,
+): string | null {
+  // "YYYY-MM-DD" sorts as text exactly as it sorts as a date.
+  const day = scheduledAt.slice(0, 10);
+  if (startDate && day < startDate) {
+    return `That time is on ${day}, before the tournament starts on ${startDate}.`;
+  }
+  if (endDate && day > endDate) {
+    return `That time is on ${day}, after the tournament ends on ${endDate}. Move the end date first if the tournament really runs that long.`;
+  }
+  return null;
+}
+
 export function endDateOverrun(
   startDate: string,
   endDate: string | undefined,

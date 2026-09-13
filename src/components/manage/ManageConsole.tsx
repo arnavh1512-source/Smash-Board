@@ -375,6 +375,8 @@ export function ManageConsole({
           scoring={openScoring}
           entries={entryMap}
           token={token}
+          startDate={tournament.startDate}
+          endDate={tournament.endDate}
           onClose={() => setScoringMatch(null)}
         />
       ) : null}

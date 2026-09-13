@@ -8,6 +8,7 @@ import {
   formatDuration,
   gapMinutes,
   isTimestamp,
+  scheduledAtOutsideTournament,
   parseClockTime,
   planSchedule,
   ScheduleError,
@@ -386,5 +387,36 @@ describe("endDateOverrun", () => {
   it("says nothing at all when the organiser has not set an end date", () => {
     // The field is optional, and an unset end date is not a promise to keep.
     expect(endDateOverrun("2026-09-20", undefined, "09:00", 100 * 60)).toBeNull();
+  });
+});
+
+describe("scheduledAtOutsideTournament", () => {
+  it("accepts any minute of the first and last day", () => {
+    expect(scheduledAtOutsideTournament("2026-09-20T00:00", "2026-09-20", "2026-09-21")).toBeNull();
+    expect(scheduledAtOutsideTournament("2026-09-21T23:59", "2026-09-20", "2026-09-21")).toBeNull();
+  });
+
+  it("refuses a time before the first day, naming both dates", () => {
+    const message = scheduledAtOutsideTournament("2026-09-19T23:59", "2026-09-20", "2026-09-21");
+    expect(message).toMatch(/2026-09-19/);
+    expect(message).toMatch(/starts on 2026-09-20/);
+  });
+
+  it("refuses a time after the last day, and says how to allow it", () => {
+    const message = scheduledAtOutsideTournament("2026-09-22T09:00", "2026-09-20", "2026-09-21");
+    expect(message).toMatch(/ends on 2026-09-21/);
+    expect(message).toMatch(/end date/);
+  });
+
+  it("applies only the dates the tournament has", () => {
+    expect(scheduledAtOutsideTournament("2030-01-01T09:00", "2026-09-20", undefined)).toBeNull();
+    expect(scheduledAtOutsideTournament("2020-01-01T09:00", undefined, "2026-09-21")).toBeNull();
+    expect(scheduledAtOutsideTournament("2020-01-01T09:00", undefined, undefined)).toBeNull();
+    expect(scheduledAtOutsideTournament("2020-01-01T09:00", "", "")).toBeNull();
+  });
+
+  it("compares across a month and a year boundary", () => {
+    expect(scheduledAtOutsideTournament("2027-01-01T09:00", "2026-12-31", "2026-12-31")).not.toBeNull();
+    expect(scheduledAtOutsideTournament("2026-12-31T09:00", "2026-12-31", "2027-01-01")).toBeNull();
   });
 });
