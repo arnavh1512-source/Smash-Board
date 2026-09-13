@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { scheduleValidator } from "./schema";
 import type { Id } from "./_generated/dataModel";
+import { randomBelow } from "../src/lib/random";
 import {
   assertPinShape,
   attemptSignIn,
@@ -51,9 +52,7 @@ const MAX_SLUG_ATTEMPTS = 6;
 
 function randomSuffix(): string {
   const alphabet = "abcdefghijkmnpqrstuvwxyz23456789";
-  const bytes = new Uint8Array(4);
-  crypto.getRandomValues(bytes);
-  return [...bytes].map((b) => alphabet[b % alphabet.length]).join("");
+  return Array.from({ length: 4 }, () => alphabet[randomBelow(alphabet.length)]).join("");
 }
 
 function cleanText(value: string | undefined, max: number): string | undefined {

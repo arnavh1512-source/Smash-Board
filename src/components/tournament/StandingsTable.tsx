@@ -5,6 +5,7 @@ import { computeStandings } from "@/lib/standings";
 import type { ScoringConfig } from "@/lib/scoring";
 import { entryName } from "@/lib/display";
 import type { EntryLookup } from "./MatchRow";
+import { SideNames } from "./PlayerPick";
 
 /** A group or round-robin table, in the BWF tiebreak order. */
 export function StandingsTable({
@@ -59,7 +60,7 @@ export function StandingsTable({
             <tr key={row.entryId} className={withdrawn ? "opacity-55" : undefined}>
               <td className="pl-0">
                 <span className="num mr-2 opacity-50">{row.rank}</span>
-                {entryName(entry)}
+                <SideNames entry={entry} label={entryName(entry)} />
                 {withdrawn ? (
                   <span className="ml-2 text-[10px] uppercase tracking-[0.08em] opacity-70">
                     Withdrawn

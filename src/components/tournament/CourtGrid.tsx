@@ -2,9 +2,10 @@
 
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { Badge, LiveDot } from "@/components/ui";
-import { sideName, STATUS_LABELS } from "@/lib/display";
+import { STATUS_LABELS } from "@/lib/display";
 import { clockOf, dayOf, formatDuration } from "@/lib/schedule";
 import type { EntryLookup } from "./MatchRow";
+import { SideNames } from "./PlayerPick";
 
 /**
  * The same timetable read court by court.
@@ -77,8 +78,8 @@ function CourtColumn({
                   <span className="truncate">{eventName.get(row.match.eventId) ?? "Category"}</span>
                 </p>
                 <p className="m-0 truncate text-[14px] leading-tight">
-                  {sideName(a, row.match.aLabel)} <span className="opacity-45">v</span>{" "}
-                  {sideName(b, row.match.bLabel)}
+                  <SideNames entry={a} label={row.match.aLabel} /> <span className="opacity-45">v</span>{" "}
+                  <SideNames entry={b} label={row.match.bLabel} />
                 </p>
               </div>
               <span className="shrink-0">

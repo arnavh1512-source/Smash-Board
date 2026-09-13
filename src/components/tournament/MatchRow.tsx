@@ -2,8 +2,9 @@
 
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
 import { cx } from "@/components/ui";
-import { sideName, STATUS_LABELS } from "@/lib/display";
+import { STATUS_LABELS } from "@/lib/display";
 import { clockOf } from "@/lib/schedule";
+import { SideNames } from "./PlayerPick";
 
 export type EntryLookup = Map<Id<"entries">, Doc<"entries">>;
 
@@ -15,13 +16,15 @@ function statusClass(status: string): string {
 }
 
 function Side({
-  name,
+  entry,
+  label,
   isWinner,
   sets,
   side,
   seed,
 }: {
-  name: string;
+  entry: Doc<"entries"> | undefined;
+  label: string | null;
   isWinner: boolean;
   sets: Doc<"matches">["sets"];
   side: "a" | "b";
@@ -31,7 +34,7 @@ function Side({
     <div className="flex items-baseline justify-between gap-3 text-[15px] leading-[1.3]">
       <span className={cx("truncate", isWinner ? "font-extrabold" : "opacity-70")}>
         {seed ? <span className="mr-1 text-[11px] opacity-50">[{seed}]</span> : null}
-        {name}
+        <SideNames entry={entry} label={label} />
       </span>
       <span className="num shrink-0 space-x-1.5">
         {sets.map((set, index) => (
@@ -77,14 +80,16 @@ export function MatchRow({
       </header>
 
       <Side
-        name={sideName(a, match.aLabel)}
+        entry={a}
+        label={match.aLabel}
         isWinner={match.winnerId !== null && match.winnerId === match.aId}
         sets={match.sets}
         side="a"
         seed={a?.seed && a.seed > 0 ? a.seed : null}
       />
       <Side
-        name={sideName(b, match.bLabel)}
+        entry={b}
+        label={match.bLabel}
         isWinner={match.winnerId !== null && match.winnerId === match.bId}
         sets={match.sets}
         side="b"

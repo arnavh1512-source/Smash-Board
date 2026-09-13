@@ -40,7 +40,16 @@ a score entered by the organiser appears on every open scoreboard without a refr
   categories to lift the limit entirely. The plan
   is a snapshot of the draw as it stood when it was made: a withdrawal, a reordered category, a
   moved start date or a knockout slot that only just learned who is playing it all mark it stale,
-  and the console says so until it is regenerated.
+  and the console says so until it is regenerated. Regenerating once play has begun plans only the
+  matches still to be played: a finished match keeps its result but gives up its court, and its
+  players are not held back for a rest they have already had. Nothing records the minute a match
+  actually ended, so the new plan does not pretend to know it.
+- **Tap a name, see your day** — every player's name on the public scoreboard, in the draw, the
+  group tables, the order of play and the court view, opens that player's own matches: the one to
+  get ready for (or the one on court now) picked out at the top with its court and time, then every
+  match across singles and doubles with partner, opponent, court, time and score. Each half of a
+  doubles pair opens on its own. The sheet lives in the address bar as `?player=`, so an organiser
+  can send one player a link to their own day, and the phone's back button closes it.
 
 ## What the draw refuses to let you undo by accident
 
@@ -184,18 +193,19 @@ npx playwright install
 | `tests/scheduleStress.test.ts` | a whole day: three categories, two courts, byes, a group stage, a third-place match, players in two draws |
 | `tests/scheduleBasis.test.ts` | the fingerprint that tells a fresh order of play from a stale one — dates, withdrawals, reordered categories, a knockout slot that only just learned who's in it |
 | `tests/capacity.test.ts` | how large a category may get in each format, checked against what the generators actually produce, and what the organiser is told when a field is too big for its format |
+| `tests/playerMatches.test.ts` | one player's day pulled out of the whole tournament: singles and doubles together, played matches first then timetable order, the match to get ready for, round names across mixed categories |
 | `tests/random.test.ts` | the draw's unbiased random integers: the rejection sampling that keeps every seat in the shuffle equally likely |
 | `tests/roundScoring.test.ts` | the semi-final and final scoring overrides |
 | `tests/integration/backend.test.ts` | the tournament lifecycle against a real deployment |
 | `tests/integration/referee.test.ts` | the sign-in door, token forgery, what a referee may and may not do, the per-source and per-tournament lockouts |
 | `tests/integration/scenarios.test.ts` | a 20-entrant knockout and a 16-entrant group stage played end to end, plus the guards above |
 | `tests/integration/withdrawal.test.ts` | a player who wins two group matches and then pulls out, and the knockout that has to fill without them, from every finishing position in the group |
-| `tests/integration/schedule.test.ts` | the order of play going stale after a withdrawal, a reordered category or a moved start date, and a knockout slot whose court booking is only trustworthy once the group stage feeding it is settled |
+| `tests/integration/schedule.test.ts` | the order of play going stale after a withdrawal, a reordered category or a moved start date, and a knockout slot whose court booking is only trustworthy once the group stage feeding it is settled, and a plan remade after a result that gives the played match no court |
 | `tests/e2e/home.spec.ts` | the landing page, its metadata and structured data, the theme memory, the phone layout |
 | `tests/e2e/auth.spec.ts` | the PIN gate, the five-try per-device lockout, a session that survives a reload, what a stranger may read, the referee's own door |
 | `tests/e2e/organiser.spec.ts` | a category run from empty to a published result, doubles pairs, bulk entry |
 | `tests/e2e/referee.spec.ts` | an umpire scoring from their own link, and the door closing when the PIN is removed |
-| `tests/e2e/public.spec.ts` | the three public views, the shareable link, a link that points at nothing |
+| `tests/e2e/public.spec.ts` | the three public views, tapping a player's name for their matches and courts, the shareable link, a link that points at nothing |
 
 The end-to-end suite starts its own Next dev server and drives the real browser: nothing is
 mocked, and every spec creates the tournament it needs, so the whole suite runs in parallel against

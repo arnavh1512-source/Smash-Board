@@ -144,7 +144,7 @@ export function ScoreDialog({
       role="dialog"
       aria-modal="true"
       aria-label={heading}
-      className="fixed inset-0 z-50 flex items-end justify-center bg-[color-mix(in_srgb,#201e1d_55%,transparent)] sm:items-center sm:p-4"
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-[color-mix(in_srgb,#201e1d_55%,transparent)] sm:items-center sm:p-4"
     >
       <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto border border-[var(--color-divider)] bg-[var(--color-bg)]">
         <header className="rule-b2 flex items-start gap-3 bg-[var(--color-surface)] px-4 py-3.5">

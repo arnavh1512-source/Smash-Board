@@ -65,6 +65,36 @@ test.describe("public scoreboard", () => {
     await byCategory.click();
     await expect(page.getByText("Finished").first()).toBeVisible();
     await expect(page.getByText("Scheduled").first()).toBeVisible();
+
+    // A player taps their own name and gets their day: every match, its court
+    // and its time, without hunting through the draw.
+    await page.getByRole("button", { name: "Kabir Shah" }).first().click();
+    const sheet = page.getByRole("dialog", { name: "Kabir Shah's matches" });
+    await expect(sheet).toBeVisible();
+    await expect(page).toHaveURL(/[?&]player=Kabir\+Shah/);
+    await expect(sheet.getByText(/Mens Singles · (Semi-final|Final)/).first()).toBeVisible();
+    await expect(sheet.getByText(/Court \d/).first()).toBeVisible();
+    await expect(sheet.getByText(/\d{1,2}:\d{2}/).first()).toBeVisible();
+
+    // The link is shareable: reloading it opens the same player's sheet.
+    await page.reload();
+    await expect(page.getByRole("dialog", { name: "Kabir Shah's matches" })).toBeVisible();
+
+    // An opponent's name inside the sheet switches to their matches.
+    const opponent = page.getByRole("dialog").getByRole("button", { name: /^(Rohan Mehta|Dev Patel|Vivek Nair)$/ }).first();
+    const opponentName = (await opponent.textContent()) ?? "";
+    await opponent.click();
+    await expect(page.getByRole("dialog", { name: `${opponentName}'s matches` })).toBeVisible();
+
+    await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page).not.toHaveURL(/player=/);
+
+    // Escape closes it too, for a keyboard at the desk.
+    await page.getByRole("button", { name: "Kabir Shah" }).first().click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 
   test("hides the view switcher until there is a timetable to switch to", async ({ page }) => {

@@ -3,9 +3,10 @@
 import { Fragment } from "react";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { Badge, LiveDot } from "@/components/ui";
-import { sideName, STATUS_LABELS } from "@/lib/display";
+import { STATUS_LABELS } from "@/lib/display";
 import { clockOf, dayOf, formatDuration, gapMinutes } from "@/lib/schedule";
 import type { EntryLookup } from "./MatchRow";
+import { SideNames } from "./PlayerPick";
 
 /**
  * The whole tournament in one list: every category merged, in the order the
@@ -70,7 +71,8 @@ function MatchLine({
           {match.court ? <span className="shrink-0">· {match.court}</span> : null}
         </p>
         <p className="m-0 truncate text-[14px] leading-tight">
-          {sideName(a, match.aLabel)} <span className="opacity-45">v</span> {sideName(b, match.bLabel)}
+          <SideNames entry={a} label={match.aLabel} /> <span className="opacity-45">v</span>{" "}
+          <SideNames entry={b} label={match.bLabel} />
         </p>
       </div>
       <span className="shrink-0">

@@ -384,3 +384,98 @@ describe("an order of play has to fit inside the tournament's own dates", () => 
     expect(outcome.lastFinish.slice(0, 10)).toBe("2026-11-21");
   }, 60_000);
 });
+
+/**
+ * A plan made after play has begun is a plan for what is still to be played.
+ *
+ * An organiser may regenerate mid-tournament - a court lost, a withdrawal. A
+ * finished match must not be handed a new court slot: it would waste the
+ * court, and it would count its players as busy, pushing their next match
+ * back for a rest they have already taken. Nothing records when the match
+ * really finished, so the plan does not guess one; it leaves the match out.
+ */
+describe("a regenerated plan leaves matches already played off the courts", () => {
+  let tournamentId: Id<"tournaments">;
+  let token: string;
+  let eventId: Id<"events">;
+
+  // One court, so every booking is a distinct time and a freed slot is visible.
+  const ONE_COURT = { ...SCHEDULE_OPTIONS, courts: 1 };
+
+  beforeAll(async () => {
+    const created = await makeTournament("Completed Replan", "2026-11-20");
+    tournamentId = created.tournamentId;
+    token = created.token;
+
+    eventId = await client.mutation(api.events.create, {
+      tournamentId,
+      token,
+      name: "Men's Singles",
+      teamSize: 1,
+      format: "knockout",
+      scoring: DEFAULT_SCORING,
+      thirdPlace: false,
+      groupCount: 2,
+      advancePerGroup: 2,
+      doubleRound: false,
+    });
+    await client.mutation(api.entries.addMany, { eventId, token, text: players(4) });
+    await client.mutation(api.draws.generate, { eventId, token, randomise: false });
+  }, 60_000);
+
+  afterAll(async () => {
+    await client.mutation(api.tournaments.remove, { tournamentId, token });
+  }, 60_000);
+
+  it("scheduled, then completed, then replanned: no new slot, and the plan knew it was stale", async () => {
+    await client.mutation(api.schedule.generate, { tournamentId, token, ...ONE_COURT });
+    const before = await client.query(api.matches.listByEvent, { eventId });
+    const semis = before
+      .filter((m) => m.stage === "knockout" && m.round === 0)
+      .sort((a, b) => (a.scheduleOffset ?? 0) - (b.scheduleOffset ?? 0));
+    expect(semis).toHaveLength(2);
+    const [first, second] = semis;
+    expect(first.court).toBeDefined();
+    expect(first.scheduleOffset).toBe(0);
+    expect(second.scheduleOffset).toBeGreaterThan(0);
+
+    await client.mutation(api.matches.setScore, { matchId: first._id, token, sets: WIN });
+    const played = (await client.query(api.matches.listByEvent, { eventId })).find(
+      (m) => m._id === first._id,
+    )!;
+    expect(played.status).toBe("completed");
+
+    // Entering the result changes what the plan was built on.
+    expect((await client.query(api.schedule.status, { tournamentId }))?.stale).toBe(true);
+
+    await client.mutation(api.schedule.generate, { tournamentId, token, ...ONE_COURT });
+    const after = await client.query(api.matches.listByEvent, { eventId });
+    const replayed = after.find((m) => m._id === first._id)!;
+    expect(replayed.court).toBeUndefined();
+    expect(replayed.scheduledAt).toBeUndefined();
+    expect(replayed.scheduleOffset).toBeUndefined();
+    // The result itself is untouched by replanning.
+    expect(replayed.status).toBe("completed");
+    expect(replayed.sets).toEqual(WIN);
+
+    // The court the played match held goes to the match still to be played.
+    const remaining = after.find((m) => m._id === second._id)!;
+    expect(remaining.scheduleOffset).toBe(0);
+
+    expect((await client.query(api.schedule.status, { tournamentId }))?.stale).toBe(false);
+  }, 120_000);
+
+  it("does not hold the winner of a played match back for rest they already had", async () => {
+    // The final waits only on the semi-final still to be played. Had the
+    // finished semi taken a slot, its winner would have been counted busy
+    // until that slot ended, and the final pushed back behind it.
+    const matches = await client.query(api.matches.listByEvent, { eventId });
+    const final = matches.find((m) => m.stage === "knockout" && m.round === 1)!;
+    const remainingSemi = matches.find(
+      (m) => m.stage === "knockout" && m.round === 0 && m.status !== "completed",
+    )!;
+    expect(final.scheduleOffset).toBe(
+      remainingSemi.scheduleOffset! + SCHEDULE_OPTIONS.matchMinutes + SCHEDULE_OPTIONS.restMinutes,
+    );
+  }, 60_000);
+});

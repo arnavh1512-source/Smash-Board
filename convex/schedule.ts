@@ -26,13 +26,23 @@ import { totalKnockoutRounds } from "./lib/progression";
  */
 
 /**
- * Matches that never take a court: byes, walkovers awarded without play, and
- * no contests where both sides withdrew. They still hold their place in the
- * bracket, so they are kept in the ordering and simply given no time slot.
+ * Matches that need no court from a new plan: byes, walkovers awarded without
+ * play, no contests where both sides withdrew, and matches already played.
+ * They still hold their place in the bracket, so they are kept in the ordering
+ * and simply given no time slot.
+ *
+ * A finished match is here because an organiser may regenerate once play has
+ * begun, and a plan made then is a plan for the matches still to be played.
+ * Booking a court for a result already on the board would waste that court,
+ * and it would also count the match's players as busy, pushing their next
+ * match back for a rest they have already had. Nothing records when a match
+ * actually finished — `updatedAt` moves with every correction — so the plan
+ * does not pretend to know; it simply leaves the played match out.
  */
 const EMPTY_LABELS = new Set(["BYE", "Withdrawn"]);
 
 function needsNoCourt(match: Doc<"matches">): boolean {
+  if (match.status === "completed") return true;
   if (match.status === "walkover" || match.status === "cancelled") return true;
   const aEmpty = match.aId === null && (match.aLabel === null || EMPTY_LABELS.has(match.aLabel));
   const bEmpty = match.bId === null && (match.bLabel === null || EMPTY_LABELS.has(match.bLabel));
@@ -232,7 +242,10 @@ export const generate = mutation({
       });
     }
 
-    // Byes never take the court, so they must not keep a stale time either.
+    // Matches that took no slot in this plan - byes, walkovers, and matches
+    // already played - must not keep a time from an earlier one, or the new
+    // timetable would show them on a court the plan has just given to somebody
+    // else.
     for (const match of matches) {
       if (placed.has(match._id)) continue;
       if (match.scheduledAt === undefined && match.scheduleOffset === undefined) continue;

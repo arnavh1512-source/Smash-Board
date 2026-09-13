@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { Badge, LiveDot, Spinner, cx } from "@/components/ui";
 import { CourtGrid } from "./CourtGrid";
 import { EventPanel } from "./EventPanel";
 import { MatchRow } from "./MatchRow";
 import { OrderOfPlay } from "./OrderOfPlay";
+import { PlayerPickProvider, usePlayerParam } from "./PlayerPick";
+import { PlayerSheet } from "./PlayerSheet";
 import { ShareBar } from "./ShareBar";
 import { StaleScheduleNotice } from "./StaleScheduleNotice";
 import { useTournamentData } from "./useTournamentData";
@@ -28,6 +30,8 @@ export function TournamentView({ slug }: { slug: string }) {
   const { tournament, events, matches, entryMap, loading } = useTournamentData(slug);
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [view, setView] = useState<"categories" | "order" | "courts">("categories");
+  const [player, setPlayer] = usePlayerParam();
+  const closePlayer = useCallback(() => setPlayer(null), [setPlayer]);
 
   if (loading) {
     return <Spinner label="Loading tournament" />;
@@ -57,6 +61,7 @@ export function TournamentView({ slug }: { slug: string }) {
   const where = [tournament.venue, dates].filter(Boolean).join(" · ");
 
   return (
+    <PlayerPickProvider onPick={setPlayer}>
     <div className="mx-auto w-full max-w-3xl">
       <header className="rule-b2 flex flex-col gap-3 px-4 py-4">
         <div className="flex items-start justify-between gap-3">
@@ -76,6 +81,11 @@ export function TournamentView({ slug }: { slug: string }) {
           </p>
         ) : null}
         <ShareBar name={tournament.name} path={`/t/${tournament.slug}`} />
+        {events.length > 0 ? (
+          <p className="m-0 text-[12px] opacity-60">
+            Tap any player&apos;s name to see their matches, times and courts.
+          </p>
+        ) : null}
       </header>
 
       {tournament.notes ? (
@@ -188,6 +198,17 @@ export function TournamentView({ slug }: { slug: string }) {
         <LiveDot size={6} />
         Updating live · no need to refresh
       </p>
+
+      {player ? (
+        <PlayerSheet
+          name={player}
+          matches={matches}
+          events={events}
+          entries={entryMap}
+          onClose={closePlayer}
+        />
+      ) : null}
     </div>
+    </PlayerPickProvider>
   );
 }
