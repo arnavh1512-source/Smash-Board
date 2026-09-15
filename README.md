@@ -7,7 +7,8 @@ a score entered by the organiser appears on every open scoreboard without a refr
 
 ## What it does
 
-- **Tournaments** — create one in a minute, protected by an organiser PIN. Public or unlisted.
+- **Tournaments** — create one in a minute, protected by an organiser PIN. Public, or unlisted behind a link
+  with eight random characters in it.
 - **Categories** — singles or doubles, each with its own scoring rules and draw format.
 - **Scoring rules** — games to 11, 15, 21 or any custom target; single game or best of 3, 5 or 7;
   ending on deuce (win by two, with an optional cap) or on a golden point.
@@ -118,9 +119,18 @@ Wrong guesses are throttled in two layers:
   a crowd rather than one person — lock the whole tournament out for ten minutes. That is what
   actually stops one bored person with a browser tab shutting a hall full of players out of their
   own scores.
+- **Trusted devices.** Rotating ids is how a crowd is faked, so a lock alone would still let one
+  person shut the organiser out. A device that has signed in with a real PIN is trusted for thirty
+  days and signs in straight through a tournament lock, still held to its own five-guess limit, and
+  its wrong guesses still count. The shared no-id bucket is never trusted.
 
-A lockout that runs out clears itself, and so does a long enough quiet spell, so a mistyped PIN
+A lockout that runs out clears itself (the tournament's count starts again from zero, so one typo
+afterwards cannot re-lock it), and so does a long enough quiet spell, so a mistyped PIN
 from months ago never counts against anyone today.
+
+Every page is also sent with `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `nosniff` and a
+strict referrer policy (see `next.config.ts`), so no other site can frame the console and trick an
+organiser into typing their PIN.
 
 The token is stateless: an HMAC over the tournament, the role, the expiry and that role's PIN hash,
 keyed by the tournament's own salt. Nothing is stored server-side, tokens last twelve hours, and
@@ -204,14 +214,15 @@ npx playwright install
 | `tests/scheduleBasis.test.ts` | the fingerprint that tells a fresh order of play from a stale one — start and end dates, withdrawals, reordered categories, a knockout slot that only just learned who's in it |
 | `tests/capacity.test.ts` | how large a category may get in each format, checked against what the generators actually produce, and what the organiser is told when a field is too big for its format |
 | `tests/playerMatches.test.ts` | one player's day pulled out of the whole tournament: singles and doubles together, played matches first then timetable order, the match to get ready for, round names across mixed categories |
+| `tests/pinThrottle.test.ts` | reading a source's sign-in history: the quiet spell, an expired lock, the tournament count resetting when its lock runs out, thirty-day trust running out, and the no-id bucket kept apart from a caller named "anonymous" |
 | `tests/random.test.ts` | the draw's unbiased random integers: the rejection sampling that keeps every seat in the shuffle equally likely |
 | `tests/roundScoring.test.ts` | the semi-final and final scoring overrides |
-| `tests/integration/backend.test.ts` | the tournament lifecycle against a real deployment |
-| `tests/integration/referee.test.ts` | the sign-in door, token forgery, what a referee may and may not do, the per-source and per-tournament lockouts |
+| `tests/integration/backend.test.ts` | the tournament lifecycle against a real deployment, including the eight-character slug tail |
+| `tests/integration/referee.test.ts` | the sign-in door, token forgery, what a referee may and may not do, the per-source and per-tournament lockouts, a signed-in device getting through a crowd's lock but not its own |
 | `tests/integration/scenarios.test.ts` | a 20-entrant knockout and a 16-entrant group stage played end to end, plus the guards above |
 | `tests/integration/withdrawal.test.ts` | a player who wins two group matches and then pulls out, and the knockout that has to fill without them, from every finishing position in the group |
 | `tests/integration/schedule.test.ts` | the order of play going stale after a withdrawal, a reordered category or a moved start or end date, a hand-typed match time outside the tournament's dates, and a finish time that keeps every match inside the hall's hours, a knockout slot whose court booking is only trustworthy once the group stage feeding it is settled, and a plan remade after a result that gives the played match no court |
-| `tests/e2e/home.spec.ts` | the landing page, its metadata and structured data, the theme memory, the phone layout |
+| `tests/e2e/home.spec.ts` | the landing page, its security headers, its metadata and structured data, the theme memory, the phone layout |
 | `tests/e2e/auth.spec.ts` | the PIN gate, the five-try per-device lockout, a session that survives a reload, what a stranger may read, the referee's own door |
 | `tests/e2e/organiser.spec.ts` | a category run from empty to a published result, doubles pairs, bulk entry |
 | `tests/e2e/referee.spec.ts` | an umpire scoring from their own link, scoring court by court from a `?court=` link, and the door closing when the PIN is removed |

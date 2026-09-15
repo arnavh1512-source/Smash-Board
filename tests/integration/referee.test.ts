@@ -432,6 +432,13 @@ describe("the lockout", () => {
       refereePin: REFEREE_PIN,
     });
 
+    // Two earlier sign-ins with the right PIN: one from the organiser's phone,
+    // which sends its id, and one that sent nothing and so landed in the
+    // shared bucket.
+    const organiserPhone = `organiser-phone-${Date.now()}`;
+    expect((await signIn(scratch.tournamentId, PIN, "organiser", organiserPhone)).ok).toBe(true);
+    expect((await signIn(scratch.tournamentId, PIN, "organiser")).ok).toBe(true);
+
     // Three wrong guesses each from three different devices, split across both
     // doors: the counter is shared, so a guesser cannot buy a fresh set of
     // tries by switching which door they knock on.
@@ -453,10 +460,13 @@ describe("the lockout", () => {
     // tournament over and the ninth met a locked door.
     expect(errors.filter((error) => /for this tournament/i.test(error))).toHaveLength(2);
 
-    // Locked means locked: the right PIN is refused too, from anywhere.
+    // Locked means locked to strangers: the right PIN is refused from a new
+    // device, and from the shared bucket, which is never trusted however
+    // recently somebody in it signed in.
     expect((await signIn(scratch.tournamentId, PIN, "organiser", "fresh")).error).toMatch(
       /Try again in/i,
     );
+    expect((await signIn(scratch.tournamentId, PIN, "organiser")).error).toMatch(/Try again in/i);
 
     // A token minted before the lock still works. The lock guards the door, not
     // the organiser who is already inside and may need to fix what went wrong.
@@ -464,6 +474,31 @@ describe("the lockout", () => {
       tournamentId: scratch.tournamentId,
       token: scratch.token,
       name: "Locked but reachable",
+    });
+
+    // And the crowd cannot shut out the organiser's own phone: it signed in
+    // before, so it walks past the tournament lock with the right PIN.
+    const organiser = await signIn(scratch.tournamentId, PIN, "organiser", organiserPhone);
+    expect(organiser.ok).toBe(true);
+  }, 180_000);
+
+  it("still throttles a trusted device by its own lock", async () => {
+    const scratch = await makeTournament("Referee Trusted Throttle");
+    const device = `trusted-${Date.now()}`;
+    expect((await signIn(scratch.tournamentId, PIN, "organiser", device)).ok).toBe(true);
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      expect((await signIn(scratch.tournamentId, WRONG_PIN, "organiser", device)).ok).toBe(false);
+    }
+    // Trust only lifts other people's lock off a device, never its own: past
+    // five wrong guesses even the right PIN waits.
+    expect((await signIn(scratch.tournamentId, PIN, "organiser", device)).error).toMatch(
+      /from this device/i,
+    );
+
+    await client.mutation(api.tournaments.remove, {
+      tournamentId: scratch.tournamentId,
+      token: scratch.token,
     });
   }, 180_000);
 

@@ -165,7 +165,9 @@ test.describe("referee", () => {
     // PIN, it is the organiser PIN with extra steps.
     await page.getByLabel("Referee PIN", { exact: false }).fill(tournament.pin);
     await page.getByRole("button", { name: "Set referee PIN" }).click();
-    await expect(page.getByText(/must be different/i)).toBeVisible();
+    // Scoped to the alert: the field's help text also says the PIN "must be
+    // different", so a bare text match is ambiguous.
+    await expect(page.getByRole("alert").filter({ hasText: /must be different/i })).toBeVisible();
     await expect(page.getByText("No referee PIN yet. Only you can enter scores.")).toBeVisible();
   });
 });

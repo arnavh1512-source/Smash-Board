@@ -200,6 +200,11 @@ export default defineSchema({
     contributed: v.number(),
     /** Epoch millis until which this source is refused outright. */
     lockedUntil: v.optional(v.number()),
+    /**
+     * Epoch millis until which this source may sign in through a
+     * tournament-wide lock, because it has already got a PIN right.
+     */
+    trustedUntil: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_source", ["tournamentId", "sourceHash"])

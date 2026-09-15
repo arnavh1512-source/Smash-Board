@@ -50,9 +50,14 @@ function slugify(name: string): string {
 /** How many times `create` will retry before giving up on a free slug. */
 const MAX_SLUG_ATTEMPTS = 6;
 
+/**
+ * The random tail of a slug. For an unlisted tournament the link is the only
+ * lock on the door, and the name in front of it is guessable, so the tail
+ * carries it alone: eight characters from 32 is 40 bits.
+ */
 function randomSuffix(): string {
   const alphabet = "abcdefghijkmnpqrstuvwxyz23456789";
-  return Array.from({ length: 4 }, () => alphabet[randomBelow(alphabet.length)]).join("");
+  return Array.from({ length: 8 }, () => alphabet[randomBelow(alphabet.length)]).join("");
 }
 
 function cleanText(value: string | undefined, max: number): string | undefined {
@@ -389,6 +394,12 @@ export const remove = mutation({
       .withIndex("by_tournament", (q) => q.eq("tournamentId", args.tournamentId as Id<"tournaments">))
       .collect();
     for (const event of events) await ctx.db.delete(event._id);
+
+    const attempts = await ctx.db
+      .query("pinAttempts")
+      .withIndex("by_tournament", (q) => q.eq("tournamentId", args.tournamentId))
+      .collect();
+    for (const attempt of attempts) await ctx.db.delete(attempt._id);
 
     await ctx.db.delete(args.tournamentId);
     return null;

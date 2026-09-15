@@ -91,6 +91,10 @@ describe("tournament creation", () => {
     expect(found?.name).toContain("Integration Run");
   });
 
+  it("ends the slug in eight random characters, so an unlisted link cannot be guessed", () => {
+    expect(slug).toMatch(/-[abcdefghijkmnpqrstuvwxyz23456789]{8}$/);
+  });
+
   it("never sends the PIN hash to a browser", async () => {
     const found = await client.query(api.tournaments.getBySlug, { slug });
     expect(found).not.toHaveProperty("pinHash");

@@ -21,6 +21,18 @@ test.describe("home page", () => {
     await expect(page.getByRole("button", { name: "Create and get my link" })).toBeVisible();
   });
 
+  test("refuses to be framed and sends the baseline security headers", async ({ page }) => {
+    const response = await page.goto("/");
+    const headers = response?.headers() ?? {};
+
+    // Without these another site could load the console in an invisible frame
+    // and trick an organiser into typing their PIN or deleting a category.
+    expect(headers["content-security-policy"]).toContain("frame-ancestors 'none'");
+    expect(headers["x-frame-options"]).toBe("DENY");
+    expect(headers["x-content-type-options"]).toBe("nosniff");
+    expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+  });
+
   test("carries the SEO and AEO metadata a share needs", async ({ page }) => {
     await page.goto("/");
 

@@ -45,6 +45,9 @@ next-env.d.ts
 
 .vercel
 
+# local /cso security audit reports
+/.security-reports/
+
 # playwright
 /test-results/
 /playwright-report/
