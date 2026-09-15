@@ -384,6 +384,55 @@ describe("an order of play has to fit inside the tournament's own dates", () => 
     expect(outcome.lastFinish.slice(0, 10)).toBe("2026-11-21");
   }, 60_000);
 
+  it("keeps every match inside the hours the hall is booked, rolling the rest to the next morning", async () => {
+    const outcome = await client.mutation(api.schedule.generate, {
+      tournamentId,
+      token,
+      ...ONE_COURT_LONG_MATCHES,
+      dayEnd: "17:00",
+    });
+    expect(outcome.lastFinish.slice(0, 10)).toBe("2026-11-21");
+    expect(outcome.lastFinish.slice(11)).not.toBe("");
+    expect(outcome.lastFinish.slice(11) <= "17:00").toBe(true);
+
+    const matches = await client.query(api.matches.listByEvent, { eventId });
+    const times = matches.flatMap((match) => (match.scheduledAt ? [match.scheduledAt] : []));
+    expect(times.length).toBeGreaterThan(8);
+    // A one-hour match that finishes by 17:00 starts by 16:00.
+    for (const time of times) {
+      expect(time.slice(11) >= "09:00" && time.slice(11) <= "16:00").toBe(true);
+    }
+    expect(new Set(times.map((time) => time.slice(0, 10)))).toEqual(
+      new Set(["2026-11-20", "2026-11-21"]),
+    );
+  }, 60_000);
+
+  it("refuses a finish so early that the field no longer fits in the tournament's days", async () => {
+    // Three one-hour matches a day on one court cannot play fifteen in two days.
+    const message = await rejects(
+      client.mutation(api.schedule.generate, {
+        tournamentId,
+        token,
+        ...ONE_COURT_LONG_MATCHES,
+        dayEnd: "12:00",
+      }),
+    );
+    expect(message).toMatch(/end date of 2026-11-21/);
+    expect(message).toMatch(/finish it later/);
+  }, 60_000);
+
+  it("refuses a finish that comes before the first match of the day", async () => {
+    const message = await rejects(
+      client.mutation(api.schedule.generate, {
+        tournamentId,
+        token,
+        ...ONE_COURT_LONG_MATCHES,
+        dayEnd: "08:00",
+      }),
+    );
+    expect(message).toMatch(/finish after the first one starts/);
+  }, 60_000);
+
   it("goes stale the moment the end date is pulled back in, because the plan no longer fits", async () => {
     expect((await client.query(api.schedule.status, { tournamentId }))?.stale).toBe(false);
     await client.mutation(api.tournaments.update, { tournamentId, token, endDate: "2026-11-20" });

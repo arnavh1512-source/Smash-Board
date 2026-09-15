@@ -6,6 +6,8 @@ import {
   formAlert,
   generateDraw,
   openTab,
+  planOrderOfPlay,
+  scoreFirstMatch,
 } from "./helpers";
 
 /**
@@ -15,6 +17,11 @@ import {
  */
 
 const REFEREE_PIN = "umpire-9034";
+
+/** Today, as the date input wants it, so the order of play lands on a real day. */
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 test.describe("referee", () => {
   test("scores a match from the umpire's own link", async ({ page, context }) => {
@@ -73,6 +80,57 @@ test.describe("referee", () => {
     await page.goto(`/t/${tournament.slug}`);
     await expect(page.getByText("Finished").first()).toBeVisible();
     await expect(page.getByText("21").first()).toBeVisible();
+
+    await umpire.close();
+  });
+
+  test("scores court by court from a link that names the court", async ({ page, context }) => {
+    const tournament = await createTournament(page, { startDate: today() });
+    await addCategory(page, { name: "Mens Singles", pointsPerSet: 21, sets: "Single set" });
+    await openTab(page, "Entrants");
+    for (const player of ["Rohan Mehta", "Dev Patel", "Kabir Shah", "Vivek Nair"]) {
+      await addEntrant(page, player);
+    }
+    await openTab(page, "Draw");
+    await generateDraw(page);
+    // One court, so both semi-finals queue on it one after the other.
+    await planOrderOfPlay(page, 1);
+
+    await openTab(page, "Setup");
+    await page.getByLabel("Referee PIN", { exact: false }).fill(REFEREE_PIN);
+    await page.getByRole("button", { name: "Set referee PIN" }).click();
+    await expect(page.getByText("A referee PIN is set. Give your umpires this link:")).toBeVisible();
+
+    const umpire = await context.browser()!.newContext();
+    const umpirePage = await umpire.newPage();
+    await umpirePage.goto(`/t/${tournament.slug}/score?court=${encodeURIComponent("Court 1")}`);
+    await umpirePage.getByLabel("Referee PIN").fill(REFEREE_PIN);
+    await umpirePage.getByRole("button", { name: "Start scoring" }).click();
+    await expect(umpirePage.getByText("Referee console")).toBeVisible();
+
+    // The link opened straight onto the court, on the 12-hour clock.
+    await expect(umpirePage.getByRole("button", { name: "By court" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(umpirePage.getByRole("heading", { name: "Next on Court 1" })).toBeVisible();
+    await expect(umpirePage.getByText(/Court 1 · 9:00 AM/).first()).toBeVisible();
+    await expect(umpirePage.getByRole("heading", { name: "Then on Court 1" })).toBeVisible();
+
+    await scoreFirstMatch(umpirePage, 21, 15);
+
+    // The next semi-final moves up to the top of the court, and the one just
+    // played waits underneath in case the score needs correcting.
+    await expect(umpirePage.getByText(/Court 1 · 9:00 AM/)).toHaveCount(1);
+    await expect(umpirePage.getByText("Played on Court 1 (1)")).toBeVisible();
+    await umpirePage.getByText("Played on Court 1 (1)").click();
+    await expect(umpirePage.getByRole("button", { name: "Correct the score" })).toBeVisible();
+
+    // Back to categories drops the court from the link; the umpire can still
+    // score a category the old way.
+    await umpirePage.getByRole("button", { name: "By category" }).click();
+    await expect(umpirePage).not.toHaveURL(/[?&]court=/);
+    await expect(umpirePage.getByRole("button", { name: "Score this match" }).first()).toBeVisible();
 
     await umpire.close();
   });

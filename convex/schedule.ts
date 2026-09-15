@@ -7,6 +7,7 @@ import {
   courtName,
   endDateOverrun,
   hallLoad,
+  dayWindowMinutes,
   parseClockTime,
   planSchedule,
   scheduleBasis,
@@ -181,6 +182,11 @@ export const generate = mutation({
     tournamentId: v.id("tournaments"),
     token: v.string(),
     dayStart: v.string(),
+    /**
+     * When the last match of each day has to be off court. Optional so a
+     * client from before it existed still plans, with play running on.
+     */
+    dayEnd: v.optional(v.string()),
     matchMinutes: v.number(),
     restMinutes: v.number(),
     courts: v.number(),
@@ -206,7 +212,9 @@ export const generate = mutation({
     try {
       // Validates the numbers too, and throws a message worth showing.
       parseClockTime(args.dayStart);
+      const dayMinutes = args.dayEnd ? dayWindowMinutes(args.dayStart, args.dayEnd) : undefined;
       slots = planSchedule(planner, {
+        dayMinutes,
         matchMinutes: args.matchMinutes,
         restMinutes: args.restMinutes,
         courts: args.courts,
@@ -260,6 +268,7 @@ export const generate = mutation({
     await ctx.db.patch(args.tournamentId, {
       schedule: {
         dayStart: args.dayStart,
+        ...(args.dayEnd ? { dayEnd: args.dayEnd } : {}),
         matchMinutes: args.matchMinutes,
         restMinutes: args.restMinutes,
         courts: args.courts,

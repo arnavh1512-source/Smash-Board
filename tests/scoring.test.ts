@@ -23,6 +23,22 @@ describe("validateConfig", () => {
     }
   });
 
+  it("gives every preset its own id and its own rules, so the picker can find it again", () => {
+    expect(new Set(SCORING_PRESETS.map((preset) => preset.id)).size).toBe(SCORING_PRESETS.length);
+    const rules = SCORING_PRESETS.map(({ config }) => JSON.stringify(config));
+    expect(new Set(rules).size).toBe(rules.length);
+  });
+
+  it("offers 11 points, best of 3, golden point: sudden death at 10-10, two sets to win", () => {
+    const preset = SCORING_PRESETS.find((option) => option.id === "11x3g");
+    expect(preset?.config).toEqual({ pointsPerSet: 11, bestOf: 3, endMode: "golden", cap: null });
+    const config = preset!.config;
+    expect(setsToWin(config)).toBe(2);
+    expect(setWinner({ a: 11, b: 10 }, config)).toBe("a");
+    expect(setWinner({ a: 10, b: 10 }, config)).toBeNull();
+    expect(() => setWinner({ a: 12, b: 10 }, config)).toThrow(ScoringError);
+  });
+
   it("rejects a non-integer points target", () => {
     expect(() => validateConfig({ ...bwf, pointsPerSet: 20.5 })).toThrow(ScoringError);
   });

@@ -61,7 +61,7 @@ function MatchLine({
 
   return (
     <li className="rule-b flex items-start gap-3 px-4 py-3">
-      <span className="num w-[46px] shrink-0 pt-0.5 text-[15px] font-extrabold">
+      <span className="num w-[68px] shrink-0 whitespace-nowrap pt-0.5 text-[15px] font-extrabold">
         {clockOf(scheduledAt)}
       </span>
       <div className="min-w-0 flex-1">

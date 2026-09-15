@@ -21,6 +21,9 @@ import { SchedulePanel } from "./SchedulePanel";
 import { ScoreDialog } from "./ScoreDialog";
 import { TournamentSettings } from "./TournamentSettings";
 import { DEFAULT_SCHEDULE } from "@/lib/schedule";
+import { courtsInUse } from "@/lib/courtQueue";
+import { useSearchParam } from "@/lib/useSearchParam";
+import { CourtScoring } from "./CourtScoring";
 
 /** Who is holding the console. A referee may enter scores and nothing else. */
 export type ConsoleRole = "organiser" | "referee";
@@ -35,6 +38,37 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
+
+/**
+ * Scores read category by category, or court by court. Shown once the order of
+ * play has put matches on courts; before that there is no court to pick.
+ */
+function ScoreViewToggle({
+  byCourt,
+  onByCourt,
+}: {
+  byCourt: boolean;
+  onByCourt: (on: boolean) => void;
+}) {
+  return (
+    <div className="rule-b flex gap-2 px-4 py-2.5" role="group" aria-label="Score by">
+      {[
+        { on: false, label: "By category" },
+        { on: true, label: "By court" },
+      ].map((option) => (
+        <Button
+          key={option.label}
+          variant={option.on === byCourt ? "primary" : "ghost"}
+          className="min-h-10 flex-1 text-[12px]"
+          aria-pressed={option.on === byCourt}
+          onClick={() => onByCourt(option.on)}
+        >
+          {option.label}
+        </Button>
+      ))}
+    </div>
+  );
+}
 
 /** The category strip. Referees see it too — they still have to pick a court. */
 function EventTabs({
@@ -168,6 +202,9 @@ export function ManageConsole({
   const [editingEvent, setEditingEvent] = useState<Doc<"events"> | null>(null);
   const [showEventForm, setShowEventForm] = useState(false);
   const [scoringMatch, setScoringMatch] = useState<Doc<"matches"> | null>(null);
+  // "?court=Court 2" opens the scores court by court, on that court. It is how
+  // an organiser sends each umpire a link to the court they are sitting at.
+  const [courtParam, setCourtParam] = useSearchParam("court");
 
   if (!ready || loading) return <Spinner label="Loading console" />;
 
@@ -200,6 +237,8 @@ export function ManageConsole({
   const eventEntries = activeEvent ? entries.filter((e) => e.eventId === activeEvent._id) : [];
   const eventMatches = activeEvent ? matches.filter((m) => m.eventId === activeEvent._id) : [];
   const matchMinutes = tournament.schedule?.matchMinutes ?? DEFAULT_SCHEDULE.matchMinutes;
+  const courts = courtsInUse(matches);
+  const byCourt = tab === "scores" && courts.length > 0 && courtParam !== null;
   // The live dialog needs the freshest copy of the match, not the one captured on click.
   const openMatch = scoringMatch ? matches.find((m) => m._id === scoringMatch._id) ?? null : null;
   const openEvent = openMatch
@@ -280,7 +319,26 @@ export function ManageConsole({
         )
       ) : (
         <div>
-          {tab !== "settings" && tab !== "categories" && tab !== "schedule" ? (
+          {tab === "scores" && courts.length > 0 ? (
+            <ScoreViewToggle
+              byCourt={byCourt}
+              onByCourt={(on) => setCourtParam(on ? (courtParam ?? courts[0]) : null)}
+            />
+          ) : null}
+
+          {byCourt ? (
+            <CourtScoring
+              courts={courts}
+              court={courtParam ?? ""}
+              onCourt={setCourtParam}
+              matches={matches}
+              events={events}
+              entries={entryMap}
+              onScore={setScoringMatch}
+            />
+          ) : null}
+
+          {tab !== "settings" && tab !== "categories" && tab !== "schedule" && !byCourt ? (
             <EventTabs
               events={events}
               activeId={activeEvent?._id ?? null}
@@ -288,7 +346,7 @@ export function ManageConsole({
             />
           ) : null}
 
-          {tab === "scores" && activeEvent ? (
+          {tab === "scores" && activeEvent && !byCourt ? (
             <EventPanel
               event={activeEvent}
               matches={eventMatches}

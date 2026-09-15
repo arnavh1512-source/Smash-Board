@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useCallback, useContext, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useCallback, useContext, type ReactNode } from "react";
+import { useSearchParam } from "@/lib/useSearchParam";
 import type { Doc } from "../../../convex/_generated/dataModel";
 
 /**
@@ -58,13 +59,6 @@ export function SideNames({
 
 const PARAM = "player";
 
-function subscribe(onChange: () => void): () => void {
-  window.addEventListener("popstate", onChange);
-  return () => window.removeEventListener("popstate", onChange);
-}
-
-const readPlayer = () => new URLSearchParams(window.location.search).get(PARAM);
-
 /**
  * The player whose matches are open, kept in the address bar as `?player=`.
  *
@@ -75,15 +69,10 @@ const readPlayer = () => new URLSearchParams(window.location.search).get(PARAM);
  * name somebody tapped.
  */
 export function usePlayerParam(): [string | null, (name: string | null) => void] {
-  const player = useSyncExternalStore(subscribe, readPlayer, () => null);
-  const setPlayer = useCallback((name: string | null) => {
-    const url = new URL(window.location.href);
-    const opening = name !== null && url.searchParams.get(PARAM) === null;
-    if (name === null) url.searchParams.delete(PARAM);
-    else url.searchParams.set(PARAM, name);
-    if (opening) window.history.pushState(window.history.state, "", url);
-    else window.history.replaceState(window.history.state, "", url);
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  }, []);
+  const [player, write] = useSearchParam(PARAM);
+  const setPlayer = useCallback(
+    (name: string | null) => write(name, name !== null && player === null ? "push" : "replace"),
+    [write, player],
+  );
   return [player, setPlayer];
 }

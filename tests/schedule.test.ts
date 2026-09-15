@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   clockOf,
   courtName,
+  dayCapacity,
   dayOf,
+  dayWindowMinutes,
   DEFAULT_SCHEDULE,
   endDateOverrun,
+  formatClock,
   formatDuration,
   gapMinutes,
   isTimestamp,
@@ -255,9 +258,18 @@ describe("clock helpers", () => {
   });
 
   it("reads the clock and the day back out of a timestamp", () => {
-    expect(clockOf("2026-09-11T14:05")).toBe("14:05");
+    expect(clockOf("2026-09-11T14:05")).toBe("2:05 PM");
+    expect(clockOf("2026-09-11T09:00")).toBe("9:00 AM");
     expect(dayOf("2026-09-11T14:05")).toContain("Sep");
     expect(dayOf("nonsense")).toBe("nonsense");
+  });
+
+  it("writes times on the 12-hour clock, with midnight and noon the way people say them", () => {
+    expect(formatClock("00:05")).toBe("12:05 AM");
+    expect(formatClock("11:59")).toBe("11:59 AM");
+    expect(formatClock("12:00")).toBe("12:00 PM");
+    expect(formatClock("13:30")).toBe("1:30 PM");
+    expect(formatClock("23:45")).toBe("11:45 PM");
   });
 
   it("names courts from one", () => {
@@ -279,6 +291,7 @@ describe("clock helpers", () => {
   it("ships defaults that satisfy its own validation", () => {
     expect(() => planSchedule([], DEFAULT_SCHEDULE)).not.toThrow();
     expect(DEFAULT_SCHEDULE.restMinutes).toBe(30);
+    expect(dayWindowMinutes(DEFAULT_SCHEDULE.dayStart, DEFAULT_SCHEDULE.dayEnd)).toBe(12 * 60);
   });
 });
 
@@ -347,6 +360,80 @@ describe("whole-minute durations", () => {
  * two-day one: fifty matches on two courts at thirty minutes each is over
  * twelve hours of play, and the timetable simply carried on into tomorrow.
  */
+describe("a day of play with a finish time", () => {
+  const PLAIN: ScheduleOptions = { ...OPTIONS, restMinutes: 0, courts: 1 };
+  const strangers = (count: number) =>
+    Array.from({ length: count }, (_, i) =>
+      match({ id: `m${i}`, slot: i, sides: [`a${i}`, `b${i}`] }),
+    );
+
+  it("measures the window between the first match and the close", () => {
+    expect(dayWindowMinutes("09:00", "17:00")).toBe(480);
+    expect(dayWindowMinutes("06:30", "22:15")).toBe(945);
+  });
+
+  it("refuses a finish that is not a time, or that comes before the start", () => {
+    expect(() => dayWindowMinutes("09:00", "5pm")).toThrow(/look like 21:00/);
+    expect(() => dayWindowMinutes("09:00", "09:00")).toThrow(/finish after the first one starts/);
+    expect(() => dayWindowMinutes("18:00", "02:00")).toThrow(ScheduleError);
+  });
+
+  it("counts how many matches a day can hold before rest is considered", () => {
+    expect(dayCapacity(720, 30, 2)).toBe(48);
+    // A slot that would end after the close is not a slot.
+    expect(dayCapacity(100, 30, 3)).toBe(9);
+    expect(dayCapacity(20, 30, 4)).toBe(0);
+    expect(dayCapacity(Number.NaN, 30, 2)).toBe(0);
+  });
+
+  it("rejects a day that is not a whole number of minutes, or shorter than a match", () => {
+    expect(() => planSchedule([], { ...PLAIN, dayMinutes: 0 })).toThrow(ScheduleError);
+    expect(() => planSchedule([], { ...PLAIN, dayMinutes: 90.5 })).toThrow(ScheduleError);
+    expect(() => planSchedule([], { ...PLAIN, dayMinutes: 24 * 60 + 1 })).toThrow(ScheduleError);
+    expect(() => planSchedule([], { ...PLAIN, dayMinutes: 20 })).toThrow(/shorter than one match/);
+  });
+
+  it("moves a match that would run past the finish to the first slot of the next morning", () => {
+    const slots = planSchedule(strangers(3), { ...PLAIN, dayMinutes: 60 });
+    expect(slotOf(slots, "m0").startMinute).toBe(0);
+    expect(slotOf(slots, "m1").startMinute).toBe(30);
+    expect(slotOf(slots, "m2").startMinute).toBe(24 * 60);
+  });
+
+  it("does not squeeze a match into the tail end of the day", () => {
+    // 50 minutes holds one 30-minute match, not a second that would end at 60.
+    const slots = planSchedule(strangers(2), { ...PLAIN, dayMinutes: 50 });
+    expect(slotOf(slots, "m1").startMinute).toBe(24 * 60);
+  });
+
+  it("never books a match that ends after the close, however many days the field needs", () => {
+    const slots = planSchedule(strangers(25), { ...PLAIN, courts: 2, dayMinutes: 90 });
+    expect(slots).toHaveLength(25);
+    for (const slot of slots) {
+      expect((slot.startMinute % (24 * 60)) + PLAIN.matchMinutes).toBeLessThanOrEqual(90);
+    }
+    // Three slots a day on two courts: 25 matches take five days.
+    expect(Math.max(...slots.map((slot) => slot.startMinute))).toBe(4 * 24 * 60);
+  });
+
+  it("still gives a player their rest when it would carry them past the finish", () => {
+    const slots = planSchedule(
+      [
+        match({ id: "first", slot: 0, sides: ["p1", "p2"] }),
+        match({ id: "again", slot: 1, sides: ["p1", "p3"] }),
+      ],
+      { ...PLAIN, courts: 2, restMinutes: 30, dayMinutes: 60 },
+    );
+    expect(slotOf(slots, "first").startMinute).toBe(0);
+    expect(slotOf(slots, "again").startMinute).toBe(24 * 60);
+  });
+
+  it("plans exactly as before when the day has no finish", () => {
+    const slots = planSchedule(strangers(3), PLAIN);
+    expect(slots.map((slot) => slot.startMinute)).toEqual([0, 30, 60]);
+  });
+});
+
 describe("endDateOverrun", () => {
   it("passes a plan that finishes on the last day", () => {
     // 09:00 plus eight hours is 17:00 on the same day.
@@ -362,7 +449,7 @@ describe("endDateOverrun", () => {
     const message = endDateOverrun("2026-09-20", "2026-09-20", "09:00", 16 * 60);
     expect(message).toMatch(/past the tournament's end date of 2026-09-20/);
     expect(message).toMatch(/2026-09-21/);
-    expect(message).toMatch(/01:00/);
+    expect(message).toMatch(/1:00 AM/);
   });
 
   it("names the levers, because the answer is usually a court and not a longer tournament", () => {

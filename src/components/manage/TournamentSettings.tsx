@@ -320,6 +320,10 @@ function RefereePinForm({
             path={`/t/${tournament.slug}/score`}
             compact
           />
+          <p className="m-0 text-[12px] opacity-70">
+            Umpire sitting at one court? Add the court to the link, like{" "}
+            <code>?court=Court%201</code>, and it opens on that court&apos;s matches.
+          </p>
         </>
       ) : (
         <Alert kind="info">No referee PIN yet. Only you can enter scores.</Alert>

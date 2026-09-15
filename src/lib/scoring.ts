@@ -43,6 +43,7 @@ export const SCORING_PRESETS: { id: string; label: string; config: ScoringConfig
   { id: "11x3", label: "11 points | best of 3 | deuce", config: { pointsPerSet: 11, bestOf: 3, endMode: "deuce", cap: 15 } },
   { id: "11x5", label: "11 points | best of 5 | deuce", config: { pointsPerSet: 11, bestOf: 5, endMode: "deuce", cap: 15 } },
   { id: "11x1g", label: "11 points | single set | golden point", config: { pointsPerSet: 11, bestOf: 1, endMode: "golden", cap: null } },
+  { id: "11x3g", label: "11 points | best of 3 | golden point", config: { pointsPerSet: 11, bestOf: 3, endMode: "golden", cap: null } },
   { id: "21x3g", label: "21 points | best of 3 | golden point", config: { pointsPerSet: 21, bestOf: 3, endMode: "golden", cap: null } },
 ];
 

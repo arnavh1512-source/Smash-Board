@@ -28,9 +28,16 @@ a score entered by the organiser appears on every open scoreboard without a refr
   ripple forward, and group tables re-sort in the BWF tiebreak order.
 - **Referees** — a second, scoring-only PIN opens `/t/<slug>/score`. Referees enter results and
   nothing else: they cannot touch the draw, the entrants, the settings or the tournament itself.
+  Once the order of play is planned they can score **by court**: the match on court now, what
+  comes on after it, and what has been played there for correcting. The court rides in the link,
+  so `/t/<slug>/score?court=Court%202` opens straight onto Court 2 for the umpire sitting at it.
 - **Order of play** — every category laid out on one timetable across the courts the hall has,
   planned to keep a rest between a player's matches and let another category fill the court while
   they take it. Readable in time order or court by court, by organiser and public alike.
+  The organiser sets when the first match starts **and when the last one has to finish**; nothing
+  is booked to run past the finish, a match that would goes to the first slot of the next morning,
+  and the form shows how many matches a day those hours hold. Times read on the 12-hour clock
+  (9:30 AM) and are stored as 24-hour local timestamps, which sort as text.
 - **A hall that stays walkable** — courts limit how many people are *playing*; "categories at once"
   limits how many are *in the building*. A category's whole field turns up when its first match is
   called and drifts home after its last, so six categories running together put six fields in one
@@ -190,7 +197,8 @@ npx playwright install
 | `tests/display.test.ts` | entrant names, scoring summaries, match ordering |
 | `tests/csv.test.ts` | reading a Google Forms sheet: quoted commas, tabs, a byte order mark, column guessing, duplicate submissions, category filtering |
 | `tests/identity.test.ts` | folding a name typed several ways into one person, so rest and duplicate checks key on the human rather than the spelling |
-| `tests/schedule.test.ts` | court packing, rest between matches, the court-count cap, clock maths |
+| `tests/schedule.test.ts` | court packing, rest between matches, the court-count cap, the day's finish time rolling play to the next morning, day capacity, 12-hour clock maths |
+| `tests/courtQueue.test.ts` | one court read the umpire's way: the live match ahead of the one due, the planner's order, hand-typed times, played matches for correcting |
 | `tests/hallCrowding.test.ts` | the hall limit: categories run in blocks, rest survives a block boundary, feeders stay in front, and the peak head count falls as the limit tightens |
 | `tests/scheduleStress.test.ts` | a whole day: three categories, two courts, byes, a group stage, a third-place match, players in two draws |
 | `tests/scheduleBasis.test.ts` | the fingerprint that tells a fresh order of play from a stale one — start and end dates, withdrawals, reordered categories, a knockout slot that only just learned who's in it |
@@ -202,12 +210,12 @@ npx playwright install
 | `tests/integration/referee.test.ts` | the sign-in door, token forgery, what a referee may and may not do, the per-source and per-tournament lockouts |
 | `tests/integration/scenarios.test.ts` | a 20-entrant knockout and a 16-entrant group stage played end to end, plus the guards above |
 | `tests/integration/withdrawal.test.ts` | a player who wins two group matches and then pulls out, and the knockout that has to fill without them, from every finishing position in the group |
-| `tests/integration/schedule.test.ts` | the order of play going stale after a withdrawal, a reordered category or a moved start or end date, a hand-typed match time outside the tournament's dates, and a knockout slot whose court booking is only trustworthy once the group stage feeding it is settled, and a plan remade after a result that gives the played match no court |
+| `tests/integration/schedule.test.ts` | the order of play going stale after a withdrawal, a reordered category or a moved start or end date, a hand-typed match time outside the tournament's dates, and a finish time that keeps every match inside the hall's hours, a knockout slot whose court booking is only trustworthy once the group stage feeding it is settled, and a plan remade after a result that gives the played match no court |
 | `tests/e2e/home.spec.ts` | the landing page, its metadata and structured data, the theme memory, the phone layout |
 | `tests/e2e/auth.spec.ts` | the PIN gate, the five-try per-device lockout, a session that survives a reload, what a stranger may read, the referee's own door |
 | `tests/e2e/organiser.spec.ts` | a category run from empty to a published result, doubles pairs, bulk entry |
-| `tests/e2e/referee.spec.ts` | an umpire scoring from their own link, and the door closing when the PIN is removed |
-| `tests/e2e/public.spec.ts` | the three public views, tapping a player's name for their matches and courts, the shareable link, a link that points at nothing |
+| `tests/e2e/referee.spec.ts` | an umpire scoring from their own link, scoring court by court from a `?court=` link, and the door closing when the PIN is removed |
+| `tests/e2e/public.spec.ts` | the day's finish time and capacity on the planning form, the three public views, tapping a player's name for their matches and courts, the shareable link, a link that points at nothing |
 
 The end-to-end suite starts its own Next dev server and drives the real browser: nothing is
 mocked, and every spec creates the tournament it needs, so the whole suite runs in parallel against

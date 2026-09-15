@@ -56,19 +56,35 @@ export interface ScheduleOptions {
    * categories to lift the limit entirely.
    */
   categoriesAtOnce: number;
+  /**
+   * Minutes of play in each day, from the first match of the morning to the
+   * moment the last one has to be off court (see `dayWindowMinutes`).
+   *
+   * A match that would still be running when the day closes is not squeezed
+   * in: it moves to the first slot of the next morning. Left out, play runs on
+   * without a break, which is how plans made before the day had an end behave.
+   */
+  dayMinutes?: number;
 }
 
 export interface ScheduledSlot {
   matchId: string;
-  /** Minutes from the start of play. */
+  /**
+   * Minutes from the first match of the first day. A slot on the second day
+   * is a whole day (1440 minutes) further on, so it still turns straight into
+   * a clock time and still sorts after everything on the first day.
+   */
   startMinute: number;
   endMinute: number;
   /** 0-based court index; `courtName` turns it into "Court 1". */
   court: number;
 }
 
-export const DEFAULT_SCHEDULE: ScheduleOptions & { dayStart: string } = {
+export const DEFAULT_SCHEDULE: ScheduleOptions & { dayStart: string; dayEnd: string } = {
   dayStart: "09:00",
+  // A club hall is usually booked until the evening, not until the last match
+  // happens to end.
+  dayEnd: "21:00",
   matchMinutes: 30,
   restMinutes: 30,
   courts: 2,
@@ -166,6 +182,30 @@ function assertOptions(options: ScheduleOptions): void {
   ) {
     throw new ScheduleError("Between 1 and 24 categories may run at the same time.");
   }
+  if (options.dayMinutes !== undefined) {
+    if (!Number.isInteger(options.dayMinutes) || options.dayMinutes < 1 || options.dayMinutes > 24 * 60) {
+      throw new ScheduleError("A day of play must be a whole number of minutes, no longer than a day.");
+    }
+    if (options.dayMinutes < options.matchMinutes) {
+      throw new ScheduleError(
+        "The day is shorter than one match. Start the first match earlier, finish later, or shorten the matches.",
+      );
+    }
+  }
+}
+
+const DAY = 24 * 60;
+
+/**
+ * The earliest start at or after `start` from which a whole match finishes
+ * before the day closes: `start` itself if it fits, otherwise the first match
+ * of the next morning. Offsets count from the first match of the first day,
+ * so every morning begins on a whole multiple of a day.
+ */
+function withinDay(start: number, duration: number, dayMinutes: number | undefined): number {
+  if (dayMinutes === undefined) return start;
+  const morning = Math.floor(start / DAY) * DAY;
+  return start + duration <= morning + dayMinutes ? start : morning + DAY;
 }
 
 /**
@@ -191,11 +231,16 @@ interface Booking {
  * queue behind that idle stretch instead of using it, and a two-category
  * tournament would run twice as long as it needs to.
  */
-function firstFit(bookings: readonly Booking[], ready: number, duration: number): number {
-  let start = ready;
+function firstFit(
+  bookings: readonly Booking[],
+  ready: number,
+  duration: number,
+  dayMinutes: number | undefined,
+): number {
+  let start = withinDay(ready, duration, dayMinutes);
   for (const booking of bookings) {
     if (start + duration <= booking.start) return start;
-    if (start < booking.end) start = booking.end;
+    if (start < booking.end) start = withinDay(booking.end, duration, dayMinutes);
   }
   return start;
 }
@@ -286,9 +331,9 @@ export function planSchedule(
       }
 
       let bestCourt = 0;
-      let bestStart = firstFit(booked[0], ready, options.matchMinutes);
+      let bestStart = firstFit(booked[0], ready, options.matchMinutes, options.dayMinutes);
       for (let court = 1; court < options.courts; court++) {
-        const start = firstFit(booked[court], ready, options.matchMinutes);
+        const start = firstFit(booked[court], ready, options.matchMinutes, options.dayMinutes);
         if (start < bestStart) {
           bestCourt = court;
           bestStart = start;
@@ -410,9 +455,45 @@ export function toClockTime(startDate: string, dayStart: string, offsetMinutes: 
   return `${date}T${pad(Math.floor(minuteOfDay / 60))}:${pad(minuteOfDay % 60)}`;
 }
 
-/** "09:30" from a "YYYY-MM-DDTHH:MM" timestamp, for display. */
+/**
+ * Minutes of play in a day that opens at `dayStart` and closes at `dayEnd`,
+ * both "HH:MM". The day has to close after it opens: a window running past
+ * midnight is two days, and the end date already decides how many of those
+ * the tournament has.
+ */
+export function dayWindowMinutes(dayStart: string, dayEnd: string): number {
+  const opens = parseClockTime(dayStart);
+  const closes = CLOCK.test(dayEnd.trim()) ? parseClockTime(dayEnd) : NaN;
+  if (Number.isNaN(closes)) throw new ScheduleError("Finish time must look like 21:00.");
+  if (closes <= opens) {
+    throw new ScheduleError("The last match has to finish after the first one starts, on the same day.");
+  }
+  return closes - opens;
+}
+
+/**
+ * How many matches one day can hold, before anybody's rest is counted: the
+ * slots that fit between the first match and the close, on every court. Rest
+ * and the categories-at-once limit only ever lower it, so it is the ceiling an
+ * organiser holds the entry list against.
+ */
+export function dayCapacity(dayMinutes: number, matchMinutes: number, courts: number): number {
+  if (!(dayMinutes > 0) || !(matchMinutes > 0) || !(courts > 0)) return 0;
+  return Math.floor(dayMinutes / matchMinutes) * Math.floor(courts);
+}
+
+/** "9:30 AM" from a 24-hour "HH:MM", the way a hall notice board writes it. */
+export function formatClock(value: string): string {
+  const hours = Number(value.slice(0, 2));
+  return `${hours % 12 || 12}:${value.slice(3, 5)} ${hours < 12 ? "AM" : "PM"}`;
+}
+
+/**
+ * "9:30 AM" from a "YYYY-MM-DDTHH:MM" timestamp, for display. Stored times stay
+ * on the 24-hour clock, which sorts as text; only what people read is 12-hour.
+ */
 export function clockOf(timestamp: string): string {
-  return timestamp.slice(11, 16);
+  return formatClock(timestamp.slice(11, 16));
 }
 
 const STAMP = /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):([0-5]\d)$/;
@@ -512,6 +593,6 @@ export function endDateOverrun(
   return (
     `This order of play finishes at ${clockOf(finish)} on ${finishDay}, which is past the ` +
     `tournament's end date of ${endDate}. Add a court, shorten the matches, start the day ` +
-    `earlier, run more categories at once, or move the end date.`
+    `earlier or finish it later, run more categories at once, or move the end date.`
   );
 }

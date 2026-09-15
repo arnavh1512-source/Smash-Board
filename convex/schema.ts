@@ -16,6 +16,11 @@ export const scoringValidator = v.object({
 export const scheduleValidator = v.object({
   /** Local wall-clock start of play, "HH:MM" on a 24-hour clock. */
   dayStart: v.string(),
+  /**
+   * "HH:MM" by which the last match of each day has to be finished. Optional:
+   * plans made before it existed let play run on until the draw was done.
+   */
+  dayEnd: v.optional(v.string()),
   /** How long one match is allowed on court, including the knock-up. */
   matchMinutes: v.number(),
   /** Minimum rest a player is guaranteed between two of their matches. */

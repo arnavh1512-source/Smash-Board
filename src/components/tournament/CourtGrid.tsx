@@ -69,7 +69,7 @@ function CourtColumn({
           const live = row.match.status === "live";
           return (
             <li key={row.match._id} className="rule-b flex items-start gap-3 px-3.5 py-2.5 last:border-b-0">
-              <span className="num w-[46px] shrink-0 pt-0.5 text-[14px] font-extrabold">
+              <span className="num w-[64px] shrink-0 whitespace-nowrap pt-0.5 text-[14px] font-extrabold">
                 {clockOf(row.scheduledAt)}
               </span>
               <div className="min-w-0 flex-1">

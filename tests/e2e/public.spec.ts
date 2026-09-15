@@ -37,6 +37,11 @@ test.describe("public scoreboard", () => {
     await openTab(page, "Draw");
     await generateDraw(page);
     await planOrderOfPlay(page, 2);
+    // The day has a finish as well as a start, and the form says what it holds.
+    await expect(page.getByLabel("Last match ends by")).toHaveValue("21:00");
+    await expect(page.getByTestId("day-capacity")).toContainText(
+      "9:00 AM to 9:00 PM fits up to 48 matches a day on 2 courts",
+    );
 
     await openTab(page, "Scores");
     await scoreFirstMatch(page, 21, 17);
