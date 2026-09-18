@@ -118,6 +118,8 @@ export interface CategoryOptions {
   readonly pointsPerSet?: number;
   readonly sets?: "Single set" | "Best of 3" | "Best of 5" | "Best of 7";
   readonly ending?: "deuce" | "golden";
+  /** Round robin and group formats only: every pairing meets home and away. */
+  readonly doubleRound?: boolean;
 }
 
 /** Add a category from the console. Assumes the console is already open. */
@@ -151,6 +153,9 @@ export async function addCategory(page: Page, options: CategoryOptions): Promise
   }
   if (options.ending) {
     await page.getByLabel("End of a set").selectOption(options.ending);
+  }
+  if (options.doubleRound) {
+    await setCheckbox(page, "Play every pairing twice (home and away)", true);
   }
 
   await page.getByRole("button", { name: "Add category" }).click();

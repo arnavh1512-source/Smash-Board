@@ -351,15 +351,21 @@ export function ManageConsole({
               event={activeEvent}
               matches={eventMatches}
               entries={entryMap}
-              renderAction={(match) => (
-                <Button
-                  variant="secondary"
-                  className="min-h-10 text-[12px]"
-                  onClick={() => setScoringMatch(match)}
-                >
-                  Score this match
-                </Button>
-              )}
+              renderAction={(match) =>
+                // A knockout slot still waiting on a group or an earlier round
+                // has nobody to score yet, so it offers nothing to press.
+                match.aId && match.bId ? (
+                  <Button
+                    variant="secondary"
+                    className="min-h-10 text-[12px]"
+                    onClick={() => setScoringMatch(match)}
+                  >
+                    {match.status === "completed" || match.status === "walkover"
+                      ? "Correct the score"
+                      : "Score this match"}
+                  </Button>
+                ) : null
+              }
             />
           ) : null}
 

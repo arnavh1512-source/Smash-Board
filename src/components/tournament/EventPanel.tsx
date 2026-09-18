@@ -68,7 +68,12 @@ export function EventPanel({
               <h6 className="m-0">{heading}</h6>
             </header>
             <div className="py-3">
-              <StandingsTable matches={inGroup} entries={entries} scoring={scoring} />
+              <StandingsTable
+                matches={inGroup}
+                entries={entries}
+                scoring={scoring}
+                teamSize={event.teamSize}
+              />
             </div>
             {inGroup.map((match) => (
               <MatchRow

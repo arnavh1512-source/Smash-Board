@@ -12,10 +12,13 @@ export function StandingsTable({
   matches,
   entries,
   scoring,
+  teamSize,
 }: {
   matches: Doc<"matches">[];
   entries: EntryLookup;
   scoring: ScoringConfig;
+  /** 1 for singles, where a row is a player rather than a pair. */
+  teamSize: number;
 }) {
   const ids = [
     ...new Set(
@@ -44,7 +47,7 @@ export function StandingsTable({
       <table className="table">
         <thead>
           <tr>
-            <th className="pl-0">Pair</th>
+            <th className="pl-0">{teamSize === 1 ? "Player" : "Pair"}</th>
             <th className="text-right">P</th>
             <th className="text-right">W</th>
             <th className="text-right">L</th>
