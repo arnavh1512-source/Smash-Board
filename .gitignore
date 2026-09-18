@@ -53,3 +53,8 @@ next-env.d.ts
 /playwright-report/
 /blob-report/
 /.playwright/
+
+# /brag render outputs (rebuild with: cd brag-output/composition && npx hyperframes render)
+/brag-output/brag.mp4
+/brag-output/brag.jpg
+/brag-output/audio-data-full.json

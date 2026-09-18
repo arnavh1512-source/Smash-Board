@@ -1,0 +1,3 @@
+SmashBoard is now live. Knockouts, round-robin leagues and groups that feed a knockout, all drawn in one tap. Umpires score court by court, and everyone follows the live scores from one WhatsApp link.
+
+Free to run: https://smash-board.vercel.app

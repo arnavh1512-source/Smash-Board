@@ -1,0 +1,806 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SmashBoard — launch</title>
+<style>
+@font-face{font-family:"Archivo";src:url("assets/fonts/archivo-latin.woff2") format("woff2");font-weight:100 900;font-display:block;}
+:root{--bg:#f3f2f2;--surface:#eae9e9;--card:#faf9f9;--ink:#201e1d;--muted:#5c5855;--red:#ec3013;--red-ink:#ae1800;}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{width:100%;height:100%;background:var(--bg);overflow:hidden;}
+body{font-family:"Archivo",Arial,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased;}
+#root{position:relative;width:100%;height:100%;overflow:hidden;background:var(--bg);}
+
+/* chrome */
+#court{position:absolute;inset:0;opacity:.07;}
+#topbar{position:absolute;left:120px;right:120px;top:0;height:100px;display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--ink);}
+.wordmark{font-size:30px;font-weight:800;letter-spacing:.16em;}
+#ctr{display:flex;align-items:center;gap:14px;font-size:26px;font-weight:800;letter-spacing:.08em;}
+#ctr-win{height:30px;overflow:hidden;}
+#ctr-strip div{height:30px;line-height:30px;}
+#ctr .of{color:var(--muted);}
+#rule-base{position:absolute;left:0;right:0;bottom:0;height:8px;background:var(--surface);}
+#progress{position:absolute;left:0;right:0;bottom:0;height:8px;background:var(--red);transform-origin:0 50%;}
+
+/* shared */
+.scene{position:absolute;inset:0;}
+.inner{position:absolute;inset:0;}
+.col-l{position:absolute;left:120px;top:170px;width:760px;}
+.col-r{position:absolute;left:940px;top:170px;width:860px;}
+.label{font-size:24px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;padding-top:14px;border-top:2px solid var(--ink);margin-bottom:34px;}
+.label b{color:var(--red-ink);font-weight:800;}
+.h{font-size:92px;line-height:.98;font-weight:800;letter-spacing:-.015em;}
+.h div{display:block;}
+.body{font-size:34px;line-height:1.3;margin-top:34px;max-width:720px;}
+.card{background:var(--card);border:2px solid var(--ink);}
+.card-h{background:var(--surface);border-bottom:2px solid var(--ink);padding:16px 26px;font-size:24px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;}
+.card-b{padding:30px 32px;}
+.flabel{font-size:24px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;}
+.input{border:2px solid var(--ink);background:var(--bg);height:76px;padding:0 22px;display:flex;align-items:center;font-size:36px;font-weight:700;}
+.btn{height:84px;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;letter-spacing:.01em;border:2px solid var(--ink);}
+.btn-red{background:var(--red);border-color:var(--red);color:#fff;}
+.btn-ghost{background:var(--bg);}
+.pins{display:flex;gap:14px;}
+.pin{width:78px;height:78px;border:2px solid var(--ink);background:var(--bg);display:flex;align-items:center;justify-content:center;}
+.pin i{display:block;width:20px;height:20px;border-radius:50%;background:var(--ink);}
+.live{display:inline-flex;align-items:center;gap:12px;font-size:24px;font-weight:800;letter-spacing:.16em;color:var(--red-ink);}
+.live-dot{display:block;width:18px;height:18px;border-radius:50%;background:var(--red);}
+.muted{color:var(--muted);}
+.sel{background:var(--ink);color:var(--bg);}
+
+/* 1 hook */
+#s1 .tag{position:absolute;left:120px;top:190px;font-size:26px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;}
+#s1 .big{position:absolute;left:120px;top:268px;font-size:118px;line-height:1;font-weight:800;letter-spacing:-.015em;}
+#s1 .big div{display:block;}
+#s1 .livewrap{position:absolute;left:120px;top:830px;}
+
+/* 2 create */
+.seg{position:relative;display:flex;border:2px solid var(--ink);height:76px;background:var(--bg);}
+.seg-hl{position:absolute;left:0;top:0;width:50%;height:100%;background:var(--ink);}
+.seg span{position:relative;flex:1;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;}
+.slug{margin-top:14px;font-size:28px;font-weight:700;color:var(--muted);}
+.slug b{color:var(--ink);font-weight:800;}
+.typed{display:block;white-space:nowrap;}
+
+/* 3 rules */
+.chips{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:34px;}
+.chip{border:2px solid var(--ink);height:72px;display:flex;align-items:center;padding:0 22px;font-size:30px;font-weight:800;background:var(--bg);}
+.preset{position:relative;border:2px solid var(--ink);height:84px;display:flex;align-items:center;padding:0 24px;font-size:32px;font-weight:700;margin-bottom:12px;background:var(--bg);}
+.preset-hl{position:absolute;inset:0;background:var(--ink);}
+.preset span{position:relative;}
+.formats{margin-top:40px;display:flex;flex-direction:column;gap:12px;width:560px;}
+.fmt{border:2px solid var(--ink);height:72px;display:flex;align-items:center;padding:0 24px;font-size:30px;font-weight:800;background:var(--bg);}
+
+/* 4 entrants */
+.sheet{display:grid;grid-template-columns:96px 204px 200px 180px 176px;}
+.sheet div{height:72px;display:flex;align-items:center;padding:0 12px;font-size:26px;border-bottom:2px solid var(--surface);white-space:nowrap;}
+.sheet .th{font-size:24px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;border-bottom:2px solid var(--ink);gap:10px;}
+.tick{width:26px;height:26px;background:var(--ink);position:relative;flex:none;}
+.tick::after{content:"";position:absolute;left:9px;top:4px;width:6px;height:12px;border:solid var(--bg);border-width:0 3px 3px 0;transform:rotate(45deg);}
+.seed{width:40px;height:40px;border:2px solid var(--ink);display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;}
+.foot{display:flex;justify-content:space-between;align-items:center;padding:22px 32px;border-top:2px solid var(--ink);font-size:28px;font-weight:800;}
+
+/* 5 draw */
+#bracket{position:relative;width:796px;height:560px;}
+.rh{position:absolute;top:0;font-size:24px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+.m{position:absolute;border:2px solid var(--ink);background:var(--bg);}
+.m div{height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;font-size:24px;font-weight:700;white-space:nowrap;}
+.m div+div{border-top:2px solid var(--surface);}
+.m .sd{font-size:24px;font-weight:800;color:var(--muted);}
+#bracket svg{position:absolute;left:0;top:0;}
+#drawbtn{position:absolute;left:32px;right:32px;top:250px;}
+
+/* 5b league */
+#standings{width:100%;}
+#standings .tr{display:grid;grid-template-columns:44px 1fr 48px 48px 48px 110px 130px;align-items:center;height:56px;font-size:24px;font-weight:700;border-bottom:2px solid var(--surface);position:relative;}
+#standings .th{font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border-bottom:2px solid var(--ink);}
+#standings .tr > span:nth-last-child(-n+5){text-align:right;}
+#standings .rk{color:var(--muted);font-weight:800;}
+#standings .qbar{position:absolute;left:-32px;top:0;bottom:0;width:8px;background:var(--red);transform-origin:top;}
+.through{display:flex;align-items:center;gap:12px;margin-top:18px;font-size:24px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--red-ink);}
+.through i{display:block;width:16px;height:16px;background:var(--red);}
+#semi{margin-top:30px;}
+#sL .m{position:relative;width:420px;}
+#sL .m div{position:relative;}
+#slotB{position:absolute;left:14px;}
+
+/* 6 order of play */
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px;}
+.field{border:2px solid var(--ink);background:var(--card);padding:12px 18px;height:104px;}
+.field .k{font-size:24px;font-weight:700;color:var(--muted);white-space:nowrap;}
+.field .v{font-size:38px;font-weight:800;margin-top:4px;}
+#s6 .h{font-size:84px;}
+#planbtn{margin-top:18px;}
+.tt{display:grid;grid-template-columns:150px repeat(4,1fr);}
+.tt>div{height:84px;border-bottom:2px solid var(--surface);border-left:2px solid var(--surface);padding:10px 12px;display:flex;flex-direction:column;justify-content:center;}
+.tt .t{font-size:24px;font-weight:800;border-left:0;}
+.tt .ch{height:56px;font-size:24px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;border-bottom:2px solid var(--ink);}
+.tt .c1{font-size:24px;font-weight:700;color:var(--muted);letter-spacing:.04em;}
+.tt .c2{font-size:24px;font-weight:800;white-space:nowrap;}
+.more{padding:16px 26px;font-size:26px;font-weight:700;color:var(--muted);}
+#readout{margin-top:22px;padding:22px 28px;}
+#readout .a{font-size:44px;font-weight:800;}
+#readout .b{font-size:28px;margin-top:6px;}
+
+/* 7 referees */
+.panel{position:absolute;left:0;right:0;top:0;padding:34px 32px;}
+.ptitle{font-size:46px;font-weight:800;letter-spacing:-.01em;margin-bottom:10px;}
+.psub{font-size:28px;color:var(--muted);margin-bottom:30px;}
+.courts{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.court{position:relative;border:2px solid var(--ink);height:112px;background:var(--bg);padding:0 24px;display:flex;flex-direction:column;justify-content:center;}
+.court-hl{position:absolute;inset:0;background:var(--ink);}
+.court span{position:relative;display:block;}
+.court .n{font-size:36px;font-weight:800;}
+.court .s{font-size:24px;font-weight:700;margin-top:4px;}
+.next{margin-top:30px;border-top:2px solid var(--ink);padding-top:22px;}
+.next .v{font-size:40px;font-weight:800;margin-top:6px;}
+
+/* 8 scoring */
+.games{display:flex;gap:12px;margin-bottom:28px;}
+.game{border:2px solid var(--ink);padding:12px 20px;font-size:26px;font-weight:800;background:var(--bg);}
+.game span{color:var(--muted);font-weight:700;margin-right:10px;}
+.players{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.pl{border:2px solid var(--ink);background:var(--bg);padding:22px 24px;}
+.pl .nm{font-size:34px;font-weight:800;}
+.roll{height:190px;overflow:hidden;margin:6px 0 14px;}
+.roll div{height:190px;font-size:190px;line-height:190px;font-weight:800;letter-spacing:-.02em;}
+.plus{height:70px;border:2px solid var(--ink);display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;background:var(--card);}
+#savebtn{margin-top:18px;}
+#result{margin-top:18px;font-size:32px;font-weight:800;}
+
+/* 9 live */
+.lrow{display:grid;grid-template-columns:130px 1fr 150px 1fr;align-items:center;height:90px;border-bottom:2px solid var(--surface);padding:0 26px;}
+.lrow .ct{font-size:24px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+.lrow .p{font-size:30px;font-weight:700;white-space:nowrap;}
+.lrow .p.r{text-align:right;}
+.lrow .sc{font-size:34px;font-weight:800;text-align:center;}
+#livecard{position:relative;overflow:hidden;height:760px;}
+.ring{position:absolute;width:74px;height:74px;border:3px solid var(--red);border-radius:50%;}
+#sheetp{position:absolute;left:0;right:0;bottom:0;height:470px;background:var(--bg);border-top:2px solid var(--ink);padding:30px 32px;}
+#sheetp .who{font-size:52px;font-weight:800;}
+#sheetp .club{font-size:24px;font-weight:800;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;margin-top:6px;margin-bottom:22px;}
+.srow{display:grid;grid-template-columns:150px 1fr;border-top:2px solid var(--surface);padding:16px 0;align-items:baseline;}
+.srow .k{font-size:24px;font-weight:800;letter-spacing:.1em;color:var(--muted);}
+.srow .v{font-size:30px;font-weight:700;}
+.srow .v b{font-weight:800;}
+
+/* 10 fix */
+#s10 .h{position:absolute;left:120px;top:236px;font-size:112px;}
+#s10 .label{position:absolute;left:120px;top:170px;width:1680px;}
+.tiles{position:absolute;left:120px;top:420px;width:1680px;display:grid;grid-template-columns:repeat(3,1fr);gap:24px;}
+.tile{border:2px solid var(--ink);background:var(--card);height:250px;padding:26px 28px;}
+.tile .no{font-size:24px;font-weight:800;letter-spacing:.12em;color:var(--muted);}
+.tile .tt1{font-size:40px;font-weight:800;line-height:1.1;margin-top:16px;letter-spacing:-.01em;}
+.tile .tt2{font-size:28px;line-height:1.3;margin-top:12px;}
+
+/* 11 share */
+.msg{border:2px solid var(--ink);background:var(--bg);padding:22px 26px;margin-bottom:22px;}
+.msg .who{font-size:24px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+.msg .txt{font-size:30px;line-height:1.35;margin-top:8px;}
+.msg .txt b{font-weight:800;}
+.copyrow{display:grid;grid-template-columns:1fr 250px;gap:12px;}
+.url{border:2px solid var(--ink);height:84px;display:flex;align-items:center;padding:0 20px;font-size:26px;font-weight:700;background:var(--bg);white-space:nowrap;overflow:hidden;}
+#copybtn{position:relative;}
+#copybtn span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;}
+
+/* 12 outro */
+#s12 .wm{position:absolute;left:120px;top:290px;font-size:236px;line-height:1;font-weight:800;letter-spacing:-.03em;}
+#outrule{position:absolute;left:120px;top:560px;width:1680px;height:10px;background:var(--red);transform-origin:0 50%;}
+#s12 .tl{position:absolute;left:120px;top:614px;font-size:46px;font-weight:700;width:1500px;line-height:1.25;}
+#s12 .url2{position:absolute;left:120px;top:800px;font-size:40px;font-weight:800;color:var(--red-ink);}
+#s12 .free{position:absolute;right:120px;top:812px;font-size:26px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;}
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="52">
+
+  <!-- persistent chrome -->
+  <svg id="court" width="1920" height="1080" viewBox="0 0 1920 1080" fill="none" stroke="#201e1d" stroke-width="2">
+    <rect x="120" y="158" width="1680" height="765"/>
+    <line x1="120" y1="216" x2="1800" y2="216"/>
+    <line x1="120" y1="865" x2="1800" y2="865"/>
+    <line x1="960" y1="158" x2="960" y2="923" stroke-width="4"/>
+    <line x1="712" y1="158" x2="712" y2="923"/>
+    <line x1="1208" y1="158" x2="1208" y2="923"/>
+    <line x1="215" y1="158" x2="215" y2="923"/>
+    <line x1="1705" y1="158" x2="1705" y2="923"/>
+    <line x1="120" y1="540" x2="712" y2="540"/>
+    <line x1="1208" y1="540" x2="1800" y2="540"/>
+  </svg>
+  <div id="topbar">
+    <div class="wordmark">SMASHBOARD</div>
+    <div id="ctr">
+      <div id="ctr-win" data-layout-allow-overflow data-layout-allow-occlusion><div id="ctr-strip" data-layout-allow-overflow data-layout-allow-occlusion><div>01</div><div>02</div><div>03</div><div>04</div><div>05</div><div>06</div><div>07</div><div>08</div><div>09</div><div>10</div><div>11</div></div></div>
+      <div class="of">/ 11</div>
+    </div>
+  </div>
+  <div id="rule-base"></div>
+  <div id="progress"></div>
+
+  <!-- 1 · hook -->
+  <div id="s1" class="scene clip" data-start="0" data-duration="4.02" data-track-index="1">
+    <div class="inner">
+      <div class="tag">Free to run · No sign-up for players</div>
+      <div class="big">
+        <div id="h1a">Run your badminton</div>
+        <div id="h1b">tournament —</div>
+        <div id="h1c">and let everyone watch</div>
+        <div id="h1d">the scores live.</div>
+      </div>
+      <div class="livewrap"><div class="live" id="live1"><span class="live-dot"></span>LIVE</div></div>
+    </div>
+  </div>
+
+  <!-- 2 · create -->
+  <div id="s2" class="scene clip" data-start="4.02" data-duration="3.99" data-track-index="1">
+    <div class="inner">
+      <div class="col-l">
+        <div class="label">01 — Create</div>
+        <div class="h"><div>Create it.</div><div>Lock it</div><div>with a PIN.</div></div>
+        <div class="body">No accounts. Your organiser PIN is the only key.</div>
+      </div>
+      <div class="col-r">
+        <div class="card" id="c2">
+          <div class="card-h"><span>New tournament</span><span class="muted">Step 1 of 3</span></div>
+          <div class="card-b">
+            <div class="flabel">Tournament name</div>
+            <div class="input"><span class="typed" id="typed">Ahmedabad Open 2026</span></div>
+            <div class="flabel" style="margin-top:28px">Organiser PIN</div>
+            <div class="pins" id="pins2"><div class="pin"><i></i></div><div class="pin"><i></i></div><div class="pin"><i></i></div><div class="pin"><i></i></div><div class="pin"><i></i></div><div class="pin"><i></i></div></div>
+            <div class="flabel" style="margin-top:28px">Who can find it</div>
+            <div class="seg"><div class="seg-hl" id="seghl"></div><span id="segA">Public</span><span id="segB">Unlisted · link only</span></div>
+            <div class="slug" id="slug">smash-board.vercel.app<b>/t/k7Qm2xPa</b></div>
+            <div class="btn btn-red" id="createbtn" style="margin-top:26px">Create tournament</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3 · rules -->
+  <div id="s3" class="scene clip" data-start="8.01" data-duration="4" data-track-index="1">
+    <div class="inner">
+      <div class="col-l">
+        <div class="label">02 — Your rules</div>
+        <div class="h"><div>Your rules,</div><div>not ours.</div></div>
+        <div class="body">Any category you run. Games to 21, 15 or 11 points.</div>
+      </div>
+      <div class="col-r">
+        <div class="card">
+          <div class="card-h"><span>Categories &amp; scoring</span></div>
+          <div class="card-b">
+            <div class="flabel">Categories</div>
+            <div class="chips">
+              <div class="chip">Men's Singles</div><div class="chip">Women's Doubles</div>
+              <div class="chip">Mixed Doubles</div><div class="chip">U-15 Boys</div>
+            </div>
+            <div class="flabel">Scoring preset</div>
+            <div class="preset"><span>21 · Best of 3 · Deuce, cap 30</span></div>
+            <div class="preset"><span>15 · Best of 3</span></div>
+            <div class="preset" id="gold"><div class="preset-hl" id="goldhl"></div><span id="goldtxt">11 · Best of 3 · Golden point</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4 · entrants -->
+  <div id="s4" class="scene clip" data-start="12.01" data-duration="3.99" data-track-index="1">
+    <div class="inner">
+      <div class="col-l">
+        <div class="label">03 — Entrants</div>
+        <div class="h"><div>Import your</div><div>Google Form.</div></div>
+        <div class="body">Or paste a plain list. Columns are matched for you.</div>
+      </div>
+      <div class="col-r">
+        <div class="card">
+          <div class="card-h"><span>Men's Doubles · Form responses</span></div>
+          <div class="sheet">
+            <div class="th">Seed</div>
+            <div class="th">Name<span class="tick"></span></div>
+            <div class="th">Partner<span class="tick"></span></div>
+            <div class="th">Club<span class="tick"></span></div>
+            <div class="th">Phone<span class="tick"></span></div>
+
+            <div class="r1"><span class="seed">1</span></div><div class="r1">Arjun Mehta</div><div class="r1">Rohan Iyer</div><div class="r1">Smash Club</div><div class="r1 muted">98••• •••41</div>
+            <div class="r2"><span class="seed">2</span></div><div class="r2">Kabir Shah</div><div class="r2">Dev Patel</div><div class="r2">Shuttle Hub</div><div class="r2 muted">97••• •••08</div>
+            <div class="r3"></div><div class="r3">Aarav Joshi</div><div class="r3">Neel Desai</div><div class="r3">Racquet Co</div><div class="r3 muted">99••• •••63</div>
+            <div class="r4"></div><div class="r4">Vihaan Rao</div><div class="r4">Ishan Gupta</div><div class="r4">Court Nine</div><div class="r4 muted">90••• •••12</div>
+            <div class="r5"></div><div class="r5">Kiaan Nair</div><div class="r5">Om Bhat</div><div class="r5">Smash Club</div><div class="r5 muted">96••• •••57</div>
+          </div>
+          <div class="foot" id="foot4"><span>24 pairs imported</span><span class="muted">4 of 4 columns matched</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5 · draw -->
+  <div id="s5" class="scene clip" data-start="16" data-duration="3.99" data-track-index="1">
+    <div class="inner">
+      <div class="col-l">
+        <div class="label">04 — Draw</div>
+        <div class="h"><div>Draws in</div><div>one tap.</div></div>
+        <div class="formats">
+          <div class="fmt sel">Knockout</div>
+          <div class="fmt">Round robin</div>
+          <div class="fmt">Groups, then knockout</div>
+        </div>
+      </div>
+      <div class="col-r">
+        <div class="card">
+          <div class="card-h"><span>Men's Singles · Knockout</span><span class="muted">6 players</span></div>
+          <div class="card-b" style="position:relative">
+            <div class="btn btn-red" id="drawbtn" data-layout-allow-overlap data-layout-allow-occlusion>Generate the draw</div>
+            <div id="bracket">
+              <div class="rh" style="left:0">Quarter-finals</div>
+              <div class="rh" style="left:330px">Semi-finals</div>
+              <div class="rh" style="left:600px">Final</div>
+              <svg width="796" height="560" viewBox="0 0 796 560" fill="none" stroke="#201e1d" stroke-width="2">
+                <path class="wire" d="M290 98 H310 V234 M290 234 H310 M310 166 H330" stroke-dasharray="340" stroke-dashoffset="340"/>
+                <path class="wire" d="M290 370 H310 V506 M290 506 H310 M310 438 H330" stroke-dasharray="340" stroke-dashoffset="340"/>
+                <path class="wire" d="M570 166 H585 V438 M570 438 H585 M585 302 H600" stroke-dasharray="340" stroke-dashoffset="340"/>
+              </svg>
+              <div class="m qf" style="left:0;top:50px;width:290px"><div>Arjun Mehta<span class="sd">1</span></div><div class="muted">BYE</div></div>
+              <div class="m qf" style="left:0;top:186px;width:290px"><div>Aarav Joshi</div><div>Vihaan Rao</div></div>
+              <div class="m qf" style="left:0;top:322px;width:290px"><div>Rohan Iyer</div><div>Neel Desai</div></div>
+              <div class="m qf" style="left:0;top:458px;width:290px"><div>Kabir Shah<span class="sd">2</span></div><div class="muted">BYE</div></div>
+              <div class="m sf" style="left:330px;top:118px;width:240px"><div>Arjun Mehta</div><div class="muted">Winner QF2</div></div>
+              <div class="m sf" style="left:330px;top:390px;width:240px"><div class="muted">Winner QF3</div><div>Kabir Shah</div></div>
+              <div class="m fn" style="left:600px;top:254px;width:196px"><div class="muted">Winner SF1</div><div class="muted">Winner SF2</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5b · league -->
+  <div id="sL" class="scene clip" data-start="19.99" data-duration="3.99" data-track-index="1">
+    <div class="inner">
+      <div class="col-l">
+        <div class="label">05 — League</div>
+        <div class="h"><div>Leagues,</div><div>then knockouts.</div></div>
+        <div class="body">Everyone plays everyone. The table ranks itself.</div>
+      </div>
+      <div class="col-r">
+        <div class="card">
+          <div class="card-h"><span>Open Singles · Group A</span><span class="muted">Round robin</span></div>
+          <div class="card-b">
+            <div id="standings">
+              <div class="tr th"><span>#</span><span>Player</span><span>P</span><span>W</span><span>L</span><span>Sets</span><span>Points</span></div>
+              <div class="tr row"><i class="qbar"></i><span class="rk">1</span><span>Asha Iyer</span><span>3</span><span>3</span><span>0</span><span>3–0</span><span>63–41</span></div>
+              <div class="tr row"><i class="qbar"></i><span class="rk">2</span><span>Bina Rao</span><span>3</span><span>2</span><span>1</span><span>2–1</span><span>58–52</span></div>
+              <div class="tr row"><span class="rk">3</span><span>Charu Sen</span><span>3</span><span>1</span><span>2</span><span>1–2</span><span>49–57</span></div>
+              <div class="tr row"><span class="rk">4</span><span>Diya Kapoor</span><span>3</span><span>0</span><span>3</span><span>0–3</span><span>38–58</span></div>
+            </div>
+            <div class="through"><i></i>Top two go through</div>
+            <div id="semi">
+              <div class="flabel">Semi-final 1</div>
+              <div class="m"><div><span id="slotA" class="muted">1st in Group A</span><span id="slotB" data-layout-allow-overlap>Asha Iyer</span></div><div class="muted">2nd in Group B</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6 · order of play -->
+  <div id="s6" class="scene clip" data-start="23.98" data-duration="5.99" data-track-index="1">
+    <div class="inner">
+      <div class="col-l">
+        <div class="label">06 — Order of play</div>
+        <div class="h"><div>Planned to</div><div>fit your day.</div></div>
+        <div class="fields" style="margin-top:34px">
+          <div class="field"><div class="k">First match at</div><div class="v">9:00 AM</div></div>
+          <div class="field"><div class="k">Last match ends by</div><div class="v">6:00 PM</div></div>
+          <div class="field"><div class="k">Courts</div><div class="v">4</div></div>
+          <div class="field"><div class="k">Minutes per match</div><div class="v">20</div></div>
+          <div class="field"><div class="k">Rest between matches</div><div class="v">15 min</div></div>
+          <div class="field"><div class="k">Categories at once</div><div class="v">2</div></div>
+        </div>
+        <div class="btn btn-red" id="planbtn">Plan the order of play</div>
+      </div>
+      <div class="col-r">
+        <div class="card" id="ttcard">
+          <div class="card-h"><span>Order of play</span><span class="muted">4 courts</span></div>
+          <div class="tt" id="tt"></div>
+          <div class="more">+ 58 more matches through the day</div>
+        </div>
+        <div class="sel" id="readout"><div class="a">Last match ends 5:40 PM</div><div class="b">Inside your 6:00 PM limit. Nobody plays back to back.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7 · referees -->
+  <div id="s7" class="scene clip" data-start="29.97" data-duration="4" data-track-index="1">
+    <div class="inner">
+      <div class="col-l">
+        <div class="label">07 — Referees</div>
+        <div class="h"><div>Referees score</div><div>by court.</div></div>
+        <div class="body">Each referee picks a court and scores whatever is next on it.</div>
+      </div>
+      <div class="col-r">
+        <div class="card" style="position:relative;height:760px">
+          <div class="card-h"><span>Referee</span><span class="muted">Ahmedabad Open 2026</span></div>
+          <div style="position:relative">
+            <div class="panel" id="signin" data-layout-allow-overlap data-layout-allow-occlusion>
+              <div class="ptitle">Referee sign-in</div>
+              <div class="psub">Enter the referee PIN from the organiser.</div>
+              <div class="pins" id="pins7"><div class="pin"><i></i></div><div class="pin"><i></i></div><div class="pin"><i></i></div><div class="pin"><i></i></div><div class="pin"><i></i></div><div class="pin"><i></i></div></div>
+            </div>
+            <div class="panel" id="picker" data-layout-allow-overlap data-layout-allow-occlusion>
+              <div class="ptitle">Pick the court you are umpiring.</div>
+              <div class="courts" style="margin-top:26px">
+                <div class="court"><span class="n">Court 1</span><span class="s muted">In play</span></div>
+                <div class="court" id="court2"><div class="court-hl" id="court2hl"></div><span class="n" id="c2n">Court 2</span><span class="s" id="c2s">Ready</span></div>
+                <div class="court"><span class="n">Court 3</span><span class="s muted">In play</span></div>
+                <div class="court"><span class="n">Court 4</span><span class="s muted">Ready</span></div>
+              </div>
+              <div class="next" id="next7">
+                <div class="flabel">Next on Court 2 · Final</div>
+                <div class="v">Arjun Mehta vs Kabir Shah</div>
+              </div>
+              <div class="btn btn-red" id="startbtn" style="margin-top:24px">Start scoring</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8 · scoring -->
+  <div id="s8" class="scene clip" data-start="33.97" data-duration="3.99" data-track-index="1">
+    <div class="inner">
+      <div class="col-l">
+        <div class="label">08 — Scoring</div>
+        <div class="h"><div>One tap</div><div>per point.</div></div>
+        <div class="body">Winners move up the draw automatically.</div>
+      </div>
+      <div class="col-r">
+        <div class="card">
+          <div class="card-h"><span>Enter the score · Court 2</span><span class="muted">Final</span></div>
+          <div class="card-b">
+            <div class="games"><div class="game"><span>Game 1</span>21–17</div><div class="game"><span>Game 2</span>19–21</div><div class="game sel"><span style="color:inherit">Game 3</span>live</div></div>
+            <div class="players">
+              <div class="pl"><div class="nm">Arjun Mehta</div><div class="roll" data-layout-allow-overflow data-layout-allow-occlusion><div id="strip" data-layout-allow-overflow data-layout-allow-occlusion><div>19</div><div>20</div><div>21</div></div></div><div class="plus" id="plusA">+1</div></div>
+              <div class="pl"><div class="nm">Kabir Shah</div><div class="roll"><div><div>19</div></div></div><div class="plus">+1</div></div>
+            </div>
+            <div class="btn btn-red" id="savebtn">Save score</div>
+            <div id="result">Arjun Mehta wins 2–1 · Champion</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 9 · live -->
+  <div id="s9" class="scene clip" data-start="37.96" data-duration="3.99" data-track-index="1">
+    <div class="inner">
+      <div class="col-l">
+        <div class="label">09 — Live</div>
+        <div class="h"><div>Everyone</div><div>follows live.</div></div>
+        <div class="body">No app, no sign-up. Tap your name to see your day.</div>
+      </div>
+      <div class="col-r">
+        <div class="card" id="livecard" data-layout-allow-overlap data-layout-allow-occlusion>
+          <div class="card-h"><span>Ahmedabad Open 2026</span><span class="live"><span class="live-dot"></span>LIVE</span></div>
+          <div class="flabel" style="padding:24px 26px 6px;margin:0">On court now</div>
+          <div class="lrow"><span class="ct">Court 1</span><span class="p">Aarav Joshi</span><span class="sc">14–11</span><span class="p r">Vihaan Rao</span></div>
+          <div class="lrow"><span class="ct">Court 2</span><span class="p">Arjun Mehta</span><span class="sc">11–9</span><span class="p r" id="kabir">Kabir Shah</span></div>
+          <div class="lrow"><span class="ct">Court 3</span><span class="p">Neel Desai</span><span class="sc">19–20</span><span class="p r">Rohan Iyer</span></div>
+          <div class="lrow"><span class="ct">Court 4</span><span class="p">Ishan Gupta</span><span class="sc">3–1</span><span class="p r">Kiaan Nair</span></div>
+          <div class="ring" id="ring" style="left:700px;top:199px"></div>
+          <div id="sheetp" data-layout-allow-overflow data-layout-allow-overlap data-layout-allow-occlusion>
+            <div class="who">Kabir Shah</div>
+            <div class="club">Shuttle Hub · Seed 2</div>
+            <div class="srow"><span class="k">NOW</span><span class="v"><b>Court 2</b> · Final vs Arjun Mehta</span></div>
+            <div class="srow"><span class="k">NEXT</span><span class="v"><b>Court 3 · 1:40 PM</b> · Men's Doubles</span></div>
+            <div class="srow"><span class="k">PLAYED</span><span class="v"><b>Court 1</b> · beat Rohan Iyer 21–15, 21–18</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10 · fix anything -->
+  <div id="s10" class="scene clip" data-start="41.95" data-duration="4" data-track-index="1">
+    <div class="inner">
+      <div class="label">10 — Safety rails</div>
+      <div class="h">Fix anything, any time.</div>
+      <div class="tiles">
+        <div class="tile"><div class="no">01</div><div class="tt1">Corrections ripple forward</div><div class="tt2">Fix a score and later rounds update.</div></div>
+        <div class="tile"><div class="no">02</div><div class="tt1">Walkovers</div><div class="tt2">One tap and the other side goes through.</div></div>
+        <div class="tile"><div class="no">03</div><div class="tt1">BWF tiebreaks</div><div class="tt2">Round-robin tables rank the official way.</div></div>
+        <div class="tile"><div class="no">04</div><div class="tt1">Seeds locked after the draw</div><div class="tt2">No quiet reshuffles.</div></div>
+        <div class="tile"><div class="no">05</div><div class="tt1">Phone numbers stay private</div><div class="tt2">Never shown on the public page.</div></div>
+        <div class="tile"><div class="no">06</div><div class="tt1">PIN guessing gets locked out</div><div class="tt2">Every PIN is rate-limited.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 11 · share -->
+  <div id="s11" class="scene clip" data-start="45.95" data-duration="2" data-track-index="1">
+    <div class="inner">
+      <div class="col-l">
+        <div class="label">11 — Share</div>
+        <div class="h"><div>Share one link.</div><div>Everyone's in.</div></div>
+        <div class="body">Drop it in the WhatsApp group.</div>
+      </div>
+      <div class="col-r">
+        <div class="card">
+          <div class="card-h"><span>Share</span></div>
+          <div class="card-b">
+            <div class="msg"><div class="who">Tournament group</div><div class="txt"><b>Ahmedabad Open 2026</b> — draws, order of play and live scores here.</div></div>
+            <div class="copyrow">
+              <div class="url">smash-board.vercel.app/t/k7Qm2xPa</div>
+              <div class="btn btn-ghost" id="copybtn"><span id="cp1">Copy link</span><span id="cp2">Link copied</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 12 · outro -->
+  <div id="s12" class="scene clip" data-start="47.95" data-duration="4.05" data-track-index="1">
+    <div class="inner">
+      <div class="wm">SmashBoard</div>
+      <div id="outrule"></div>
+      <div class="tl" style="text-wrap:balance">Run your badminton tournament and let everyone watch the scores live.</div>
+      <div class="url2">smash-board.vercel.app</div>
+      <div class="free">Free to run</div>
+    </div>
+  </div>
+
+  <!-- audio -->
+  <audio id="bed" src="assets/music/bed.mp3" data-start="0" data-duration="52" data-track-index="10" data-volume="0.35"></audio>
+  <audio id="sx-drop" src="assets/sfx/drop_002.ogg" data-start="0.52" data-duration="1.2" data-track-index="11" data-volume="0.55"></audio>
+  <audio id="sx-key1" src="assets/sfx/keypress-001.wav" data-start="4.8" data-duration="0.5" data-track-index="12" data-volume="0.6"></audio>
+  <audio id="sx-key2" src="assets/sfx/keypress-002.wav" data-start="5.1" data-duration="0.5" data-track-index="13" data-volume="0.6"></audio>
+  <audio id="sx-key3" src="assets/sfx/keypress-003.wav" data-start="5.4" data-duration="0.5" data-track-index="12" data-volume="0.6"></audio>
+  <audio id="sx-key4" src="assets/sfx/keypress-001.wav" data-start="5.72" data-duration="0.5" data-track-index="13" data-volume="0.55"></audio>
+  <audio id="sx-key5" src="assets/sfx/keypress-002.wav" data-start="5.95" data-duration="0.5" data-track-index="12" data-volume="0.55"></audio>
+  <audio id="sx-switch" src="assets/sfx/switch_002.ogg" data-start="6.52" data-duration="0.8" data-track-index="11" data-volume="0.65"></audio>
+  <audio id="sx-click1" src="assets/sfx/click_002.ogg" data-start="7.51" data-duration="0.8" data-track-index="11" data-volume="0.7"></audio>
+  <audio id="sx-slide1" src="assets/sfx/card-slide-1.ogg" data-start="8.76" data-duration="1" data-track-index="11" data-volume="0.6"></audio>
+  <audio id="sx-place1" src="assets/sfx/card-place-1.ogg" data-start="9.76" data-duration="1" data-track-index="12" data-volume="0.6"></audio>
+  <audio id="sx-click2" src="assets/sfx/click_003.ogg" data-start="10.76" data-duration="0.8" data-track-index="11" data-volume="0.7"></audio>
+  <audio id="sx-slide2" src="assets/sfx/card-slide-1.ogg" data-start="12.3" data-duration="1" data-track-index="11" data-volume="0.6"></audio>
+  <audio id="sx-place2" src="assets/sfx/card-place-1.ogg" data-start="13.5" data-duration="1" data-track-index="12" data-volume="0.6"></audio>
+  <audio id="sx-click3" src="assets/sfx/click_002.ogg" data-start="17.02" data-duration="0.8" data-track-index="11" data-volume="0.75"></audio>
+  <audio id="sx-slide3" src="assets/sfx/card-slide-1.ogg" data-start="17.5" data-duration="1" data-track-index="12" data-volume="0.65"></audio>
+  <audio id="sx-slideL" src="assets/sfx/card-slide-1.ogg" data-start="20.2" data-duration="1" data-track-index="11" data-volume="0.6"></audio>
+  <audio id="sx-placeL" src="assets/sfx/card-place-1.ogg" data-start="22.49" data-duration="1" data-track-index="12" data-volume="0.6"></audio>
+  <audio id="sx-click4" src="assets/sfx/click_002.ogg" data-start="25" data-duration="0.8" data-track-index="11" data-volume="0.75"></audio>
+  <audio id="sx-slide4" src="assets/sfx/card-slide-1.ogg" data-start="25.19" data-duration="1" data-track-index="12" data-volume="0.65"></audio>
+  <audio id="sx-place3" src="assets/sfx/card-place-1.ogg" data-start="27.01" data-duration="1" data-track-index="11" data-volume="0.7"></audio>
+  <audio id="sx-key6" src="assets/sfx/keypress-003.wav" data-start="30.54" data-duration="0.5" data-track-index="12" data-volume="0.55"></audio>
+  <audio id="sx-key7" src="assets/sfx/keypress-001.wav" data-start="30.79" data-duration="0.5" data-track-index="13" data-volume="0.55"></audio>
+  <audio id="sx-click5" src="assets/sfx/click_003.ogg" data-start="31.97" data-duration="0.8" data-track-index="11" data-volume="0.7"></audio>
+  <audio id="sx-click6" src="assets/sfx/click_002.ogg" data-start="32.99" data-duration="0.8" data-track-index="11" data-volume="0.7"></audio>
+  <audio id="sx-click7" src="assets/sfx/click_003.ogg" data-start="34.97" data-duration="0.8" data-track-index="11" data-volume="0.7"></audio>
+  <audio id="sx-click8" src="assets/sfx/click_003.ogg" data-start="35.96" data-duration="0.8" data-track-index="11" data-volume="0.7"></audio>
+  <audio id="sx-click9" src="assets/sfx/click_002.ogg" data-start="36.96" data-duration="0.8" data-track-index="11" data-volume="0.75"></audio>
+  <audio id="sx-click10" src="assets/sfx/click_003.ogg" data-start="39.96" data-duration="0.8" data-track-index="11" data-volume="0.7"></audio>
+  <audio id="sx-slide5" src="assets/sfx/card-slide-1.ogg" data-start="40.09" data-duration="1" data-track-index="12" data-volume="0.6"></audio>
+  <audio id="sx-place4" src="assets/sfx/card-place-1.ogg" data-start="42.45" data-duration="1" data-track-index="11" data-volume="0.5"></audio>
+  <audio id="sx-place5" src="assets/sfx/card-place-1.ogg" data-start="43.2" data-duration="1" data-track-index="12" data-volume="0.5"></audio>
+  <audio id="sx-click11" src="assets/sfx/click_002.ogg" data-start="46.95" data-duration="0.8" data-track-index="11" data-volume="0.7"></audio>
+  <audio id="sx-bell" src="assets/sfx/impactBell_heavy_000.ogg" data-start="47.95" data-duration="4" data-track-index="11" data-volume="0.7"></audio>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script src="audio-rms.js"></script>
+<script>
+(function () {
+  // Order of play grid (static data, built once before the timeline)
+  var ROWS = [
+    ["9:00 AM",  ["MS · R1", "Rao v Iyer"], ["MS · R1", "Shah v Das"], ["WD · R1", "Sen v Bose"], ["WD · R1", "Nair v Pai"]],
+    ["9:20 AM",  ["MS · R1", "Mehta v Gill"], ["MS · R1", "Joshi v Roy"], ["WD · R1", "Kaur v Jain"], ["WD · R1", "Bhat v Lal"]],
+    ["9:40 AM",  ["MS · R1", "Desai v Oza"], ["MS · R1", "Patel v Sud"], ["WD · R1", "Mani v Ray"], ["WD · R1", "Dutt v Rana"]],
+    ["10:00 AM", ["MS · R2", "Iyer v Das"], ["MS · R2", "Rao v Shah"], ["WD · R2", "Bose v Pai"], ["WD · R2", "Sen v Nair"]],
+    ["10:20 AM", ["MS · R2", "Gill v Roy"], ["MS · R2", "Oza v Sud"], ["WD · R2", "Kaur v Bhat"], ["WD · R2", "Jain v Lal"]]
+  ];
+  var tt = document.getElementById("tt");
+  var html = '<div class="t ch"></div><div class="ch">Court 1</div><div class="ch">Court 2</div><div class="ch">Court 3</div><div class="ch">Court 4</div>';
+  ROWS.forEach(function (r) {
+    html += '<div class="t cell">' + r[0] + "</div>";
+    for (var i = 1; i < 5; i++) html += '<div class="cell"><span class="c1">' + r[i][0] + '</span><span class="c2">' + r[i][1] + "</span></div>";
+  });
+  tt.innerHTML = html;
+
+  var tl = gsap.timeline({ paused: true });
+  var B = function (k) { return +(0.025 + k * 0.4992).toFixed(3); }; // beat grid, 120.19 BPM
+  var up = function (sel, pos, extra) {
+    return tl.fromTo(sel, { y: 36, opacity: 0 }, Object.assign({ y: 0, opacity: 1, duration: 0.55, ease: "power3.out" }, extra || {}), pos);
+  };
+  var fade = function (sel, pos, d) {
+    return tl.fromTo(sel, { opacity: 0 }, { opacity: 1, duration: d || 0.35, ease: "power2.out" }, pos);
+  };
+  var press = function (sel, pos) {
+    tl.to(sel, { scale: 0.94, duration: 0.08, ease: "power2.in" }, pos);
+    tl.to(sel, { scale: 1, duration: 0.22, ease: "back.out(3)" }, pos + 0.08);
+  };
+  var exit = function (scene, pos) {
+    tl.to(scene + " .inner", { opacity: 0, duration: 0.25, ease: "power1.in" }, pos);
+  };
+
+  // chrome
+  tl.fromTo("#progress", { scaleX: 0 }, { scaleX: 1, duration: 52, ease: "none" }, 0);
+  tl.fromTo("#ctr", { opacity: 0 }, { opacity: 1, duration: 0.3 }, 4.02);
+  [8.01, 12.01, 16, 19.99, 23.98, 29.97, 33.97, 37.96, 41.95, 45.95].forEach(function (t, i) {
+    tl.to("#ctr-strip", { y: -30 * (i + 1), duration: 0.4, ease: "power3.inOut" }, t);
+  });
+  tl.to("#ctr", { opacity: 0, duration: 0.3 }, 47.95);
+
+  // 1 · hook
+  fade("#s1 .tag", 0.1, 0.4);
+  up("#h1a", B(1));                       // beat-grid
+  up("#h1b", B(2));                       // beat-grid
+  up("#h1c", B(4));                       // beat-grid: 2.02 bar
+  up("#h1d", B(5));                       // beat-grid
+  fade("#live1", B(6), 0.3);
+  exit("#s1", 3.77);
+
+  // 2 · create
+  up("#s2 .label", 4.06);
+  up("#s2 .h > div", B(9) - 0.4, { stagger: 0.2 });
+  up("#c2", 4.3, { duration: 0.6 });
+  up("#s2 .body", B(10) + 0.2);
+  tl.fromTo("#typed", { clipPath: "inset(0% 100% 0% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 0.85, ease: "steps(19)" }, 4.8);
+  tl.fromTo("#pins2 i", { scale: 0 }, { scale: 1, duration: 0.12, stagger: 0.06, ease: "back.out(3)" }, 5.72);
+  tl.fromTo("#seghl", { xPercent: 0 }, { xPercent: 100, duration: 0.3, ease: "power3.inOut" }, B(13)); // beat-grid
+  tl.fromTo("#segA", { color: "#f3f2f2" }, { color: "#201e1d", duration: 0.3 }, B(13));
+  tl.fromTo("#segB", { color: "#201e1d" }, { color: "#f3f2f2", duration: 0.3 }, B(13));
+  fade("#slug", B(13) + 0.2);
+  press("#createbtn", B(15));             // beat-grid
+  exit("#s2", 7.76);
+
+  // 3 · rules
+  up("#s3 .label", 8.05);
+  up("#s3 .h > div", 8.05, { stagger: 0.25 });
+  up("#s3 .card", 8.3, { duration: 0.6 });
+  up("#s3 .chip", 8.76, { stagger: 0.25, duration: 0.4 });
+  up("#s3 .body", B(18));
+  up("#s3 .preset", 9.76, { stagger: 0.25, duration: 0.4 });
+  tl.fromTo("#goldhl", { scaleX: 0 }, { scaleX: 1, transformOrigin: "0% 50%", duration: 0.3, ease: "power3.out" }, 10.76);
+  tl.fromTo("#goldtxt", { color: "#201e1d" }, { color: "#f3f2f2", duration: 0.2 }, 10.8);
+  exit("#s3", 11.76);
+
+  // 4 · entrants
+  up("#s4 .label", 12.05);
+  up("#s4 .h > div", 12.05, { stagger: 0.25 });
+  up("#s4 .card", 12.3, { duration: 0.6 });
+  tl.fromTo("#s4 .tick", { scale: 0 }, { scale: 1, duration: 0.2, stagger: 0.25, ease: "back.out(3)" }, B(25) + 0.25);
+  up("#s4 .body", B(26));
+  [".r1", ".r2", ".r3", ".r4", ".r5"].forEach(function (r, i) {
+    tl.fromTo("#s4 " + r, { x: 40, opacity: 0 }, { x: 0, opacity: 1, duration: 0.35, ease: "power3.out" }, 13.5 + i * 0.2);
+  });
+  tl.fromTo("#s4 .seed", { scale: 0 }, { scale: 1, duration: 0.25, stagger: 0.25, ease: "back.out(3)" }, 14.75);
+  fade("#foot4", 15.0);
+  exit("#s4", 15.75);
+
+  // 5 · draw
+  up("#s5 .label", 16.04);
+  up("#s5 .h > div", 16.04, { stagger: 0.25 });
+  up("#s5 .card", 16.2, { duration: 0.55 });
+  up("#s5 .fmt", 16.6, { stagger: 0.12, duration: 0.4 });
+  press("#drawbtn", 17.02);               // beat-locked: 17.02s
+  tl.to("#drawbtn", { opacity: 0, y: -20, duration: 0.25 }, 17.3);
+  fade("#s5 .rh", 17.5, 0.3);
+  up("#s5 .qf", B(35) + 0.05, { stagger: 0.08, duration: 0.4 });
+  tl.to("#s5 .wire", { strokeDashoffset: 0, duration: 0.5, stagger: 0.12, ease: "power2.inOut" }, 17.95);
+  up("#s5 .sf", B(36) + 0.1, { stagger: 0.1, duration: 0.4 });
+  up("#s5 .fn", B(37) + 0.1, { duration: 0.4 });
+  exit("#s5", 19.74);
+
+  // 5b · league
+  up("#sL .label", 20.03);
+  up("#sL .h > div", 20.03, { stagger: 0.25 });
+  up("#sL .card", 20.2, { duration: 0.55 });
+  fade("#standings .th", 20.45, 0.3);
+  up("#standings .row", 20.5, { stagger: 0.12, duration: 0.35 });
+  up("#sL .body", B(42));
+  tl.fromTo("#standings .qbar", { scaleY: 0 }, { scaleY: 1, duration: 0.3, stagger: 0.1, ease: "power3.out" }, B(42) + 0.3);
+  fade("#sL .through", 21.4, 0.3);
+  up("#semi", 21.6, { duration: 0.4 });
+  tl.fromTo("#slotA", { opacity: 1 }, { opacity: 0, duration: 0.15 }, B(45)); // beat-grid
+  tl.fromTo("#slotB", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, B(45));
+  exit("#sL", 23.74);
+
+  // 6 · order of play
+  up("#s6 .label", 24.02);
+  up("#s6 .h > div", 24.02, { stagger: 0.25 });
+  up("#s6 .field", 24.34, { stagger: 0.07, duration: 0.4 });
+  up("#planbtn", 24.69, { duration: 0.3 });
+  press("#planbtn", 25);               // beat-locked: 25s
+  up("#ttcard", 25.19, { duration: 0.5 });
+  tl.fromTo("#tt .ch", { opacity: 0 }, { opacity: 1, duration: 0.3 }, 25.44);
+  tl.fromTo("#tt .cell", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", stagger: { each: 0.035, grid: [5, 5], from: "start" } }, 25.59);
+  fade("#s6 .more", 26.54);
+  up("#readout", 27.01, { duration: 0.5 }); // beat-locked: 27.01s
+  exit("#s6", 29.72);
+
+  // 7 · referees
+  up("#s7 .label", 30.01);
+  up("#s7 .h > div", 30.01, { stagger: 0.25 });
+  up("#s7 .card", 30.19, { duration: 0.55 });
+  up("#s7 .body", B(61));
+  tl.fromTo("#pins7 i", { scale: 0 }, { scale: 1, duration: 0.12, stagger: 0.07, ease: "back.out(3)" }, 30.54);
+  tl.to("#signin", { opacity: 0, y: -20, duration: 0.25 }, 31.19);
+  tl.fromTo("#picker", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }, 31.29);
+  tl.fromTo("#court2hl", { opacity: 0 }, { opacity: 1, duration: 0.2 }, B(64)); // beat-grid
+  tl.fromTo("#c2n, #c2s", { color: "#201e1d" }, { color: "#f3f2f2", duration: 0.2 }, B(64));
+  press("#court2", B(64));
+  up("#next7", B(65));
+  up("#startbtn", B(65) + 0.15, { duration: 0.35 });
+  press("#startbtn", 32.99);
+  exit("#s7", 33.72);
+
+  // 8 · scoring
+  up("#s8 .label", 34.01);
+  up("#s8 .h > div", 34.01, { stagger: 0.25 });
+  up("#s8 .card", 34.19, { duration: 0.55 });
+  up("#s8 .body", B(70) - 0.2);
+  press("#plusA", B(70));                 // beat-grid
+  tl.fromTo("#strip", { y: 0 }, { y: -190, duration: 0.3, ease: "power3.out" }, B(70));
+  press("#plusA", B(72));                 // beat-grid
+  tl.to("#strip", { y: -380, duration: 0.3, ease: "power3.out" }, B(72));
+  press("#savebtn", B(74));               // beat-grid
+  up("#result", B(74) + 0.2, { duration: 0.4 });
+  exit("#s8", 37.71);
+
+  // 9 · live
+  up("#s9 .label", 38);
+  up("#s9 .h > div", 38, { stagger: 0.25 });
+  up("#livecard", 38.19, { duration: 0.55 });
+  up("#s9 .lrow", 38.49, { stagger: 0.1, duration: 0.4 });
+  up("#s9 .body", B(78));
+  tl.fromTo("#ring", { scale: 0.4, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.25, ease: "power2.out" }, B(80)); // beat-grid
+  tl.to("#ring", { opacity: 0, duration: 0.25 }, B(80) + 0.35);
+  tl.fromTo("#sheetp", { yPercent: 100 }, { yPercent: 0, duration: 0.5, ease: "power3.out" }, 40.09);
+  tl.to("#s9 .lrow:nth-of-type(n+5)", { opacity: 0, duration: 0.3 }, 40.09);
+  up("#sheetp .srow", 40.39, { stagger: 0.12, duration: 0.35 });
+  exit("#s9", 41.7);
+
+  // 10 · fix anything
+  up("#s10 .label", 41.99);
+  up("#s10 .h", 41.99, { duration: 0.5 });
+  up("#s10 .tile", B(85), { stagger: 0.25, duration: 0.4 }); // beat-grid, half-beat stagger
+  exit("#s10", 45.7);
+
+  // 11 · share
+  up("#s11 .label", 45.97);
+  up("#s11 .h > div", 45.97, { stagger: 0.15, duration: 0.45 });
+  up("#s11 .card", 46.09, { duration: 0.45 });
+  up("#s11 .body", 46.29, { duration: 0.4 });
+  press("#copybtn", B(94));               // beat-grid
+  tl.fromTo("#cp1", { opacity: 1 }, { opacity: 0, duration: 0.15 }, B(94) + 0.05);
+  tl.fromTo("#cp2", { opacity: 0 }, { opacity: 1, duration: 0.15 }, B(94) + 0.1);
+  tl.fromTo("#copybtn", { backgroundColor: "#f3f2f2", color: "#201e1d" }, { backgroundColor: "#201e1d", color: "#f3f2f2", duration: 0.2 }, B(94) + 0.05);
+  exit("#s11", 47.71);
+
+  // 12 · outro
+  tl.fromTo("#s12 .wm", { y: 60, opacity: 0, scale: 1.04 }, { y: 0, opacity: 1, scale: 1, duration: 0.7, ease: "power4.out" }, 47.95); // beat-locked: 47.95s
+  tl.fromTo("#outrule", { scaleX: 0 }, { scaleX: 1, duration: 0.7, ease: "power3.inOut" }, 48.29);
+  up("#s12 .tl", B(97), { duration: 0.6 });
+  up("#s12 .url2", B(99), { duration: 0.5 });
+  fade("#s12 .free", B(100), 0.5);
+  tl.fromTo("#bed", { volume: 0.35 }, { volume: 0, duration: 1.5, ease: "none" }, 50.5);
+
+  // audio-reactive: court lines breathe, live dots glow
+  var court = document.getElementById("court");
+  var dots = document.querySelectorAll(".live-dot");
+  var react = function (r) {
+    court.style.opacity = (0.05 + 0.06 * r).toFixed(3);
+    var glow = "0 0 0 " + (3 + 9 * r).toFixed(1) + "px rgba(236,48,19," + (0.12 + 0.22 * r).toFixed(2) + ")";
+    for (var i = 0; i < dots.length; i++) dots[i].style.boxShadow = glow;
+  };
+  var RMS = window.AUDIO_RMS || [];
+  for (var f = 0; f < RMS.length; f++) tl.call(react, [RMS[f]], f / 30);
+
+  window.__timelines["main"] = tl;
+})();
+</script>
+</body>
+</html>
