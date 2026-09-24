@@ -281,7 +281,7 @@ export function FormImport({
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-[12px]">
                 <thead>
-                  <tr className="text-left opacity-55">
+                  <tr className="text-left text-muted">
                     <th className="py-1 pr-3 font-semibold">Entrant</th>
                     <th className="py-1 pr-3 font-semibold">Club</th>
                     <th className="py-1 font-semibold">Phone</th>
@@ -295,8 +295,8 @@ export function FormImport({
                           ? `${row.entry!.playerOne} / ${row.entry!.playerTwo}`
                           : row.entry!.playerOne}
                       </td>
-                      <td className="py-1 pr-3 opacity-70">{row.entry!.club ?? "—"}</td>
-                      <td className="num py-1 opacity-70">{row.entry!.phone ?? "—"}</td>
+                      <td className="py-1 pr-3 text-muted">{row.entry!.club ?? "—"}</td>
+                      <td className="num py-1 text-muted">{row.entry!.phone ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>

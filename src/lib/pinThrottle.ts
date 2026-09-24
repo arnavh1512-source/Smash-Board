@@ -16,27 +16,42 @@
  */
 export const TRUST_MS = 30 * 24 * 60 * 60 * 1000;
 
+/** The two PINs a tournament can have. Mirrors `AccessRole` in `convex/lib/auth.ts`. */
+export type TrustRole = "organiser" | "referee";
+
 /** The fields of a `pinAttempts` row the rules below read. */
 export interface SourceRecord {
   failed: number;
   contributed: number;
   lockedUntil?: number;
   trustedUntil?: number;
+  trustedRole?: TrustRole;
   updatedAt: number;
 }
 
 export interface SourceStanding<T extends SourceRecord> {
   /** Milliseconds left on this source's own lock, or 0 when it is not locked. */
   lockedFor: number;
-  /** Whether this source has signed in recently enough to ignore a tournament-wide lock. */
-  trusted: boolean;
+  /**
+   * The PIN this source has recently got right, which lets it through a
+   * tournament-wide lock for that role only — or null when it is a stranger.
+   */
+  trustedRole: TrustRole | null;
   /** The record whose failures still count against this source, or null for a clean slate. */
   spent: T | null;
 }
 
-/** The id a caller sent, trimmed, or null when it sent nothing usable. */
+/**
+ * Longest id kept. The console sends a UUID; anything longer is a caller
+ * padding the value, and the hash does not need more than this to tell ids apart.
+ */
+export const MAX_SOURCE_ID = 64;
+
+/** The id a caller sent, trimmed and capped, or null when it sent nothing usable. */
 export function sourceId(source: unknown): string | null {
-  return typeof source === "string" && source.trim() !== "" ? source.trim() : null;
+  if (typeof source !== "string") return null;
+  const id = source.trim().slice(0, MAX_SOURCE_ID);
+  return id === "" ? null : id;
 }
 
 /**
@@ -81,7 +96,39 @@ export function readSource<T extends SourceRecord>(
 ): SourceStanding<T> {
   return {
     lockedFor: record?.lockedUntil && record.lockedUntil > now ? record.lockedUntil - now : 0,
-    trusted: record?.trustedUntil !== undefined && record.trustedUntil > now,
+    trustedRole:
+      record?.trustedUntil !== undefined && record.trustedUntil > now
+        ? // Rows written before trust was tied to a role get the narrower one.
+          (record.trustedRole ?? "referee")
+        : null,
     spent: record && !record.lockedUntil && now - record.updatedAt < quietMs ? record : null,
   };
+}
+
+/**
+ * Which of the requested roles may still be tried while the tournament is locked.
+ *
+ * Trust is earned per PIN. A phone that was only ever handed the referee PIN
+ * must not be able to keep guessing at the organiser PIN through a lock the
+ * crowd tripped — that would turn every umpire's phone into a way round the
+ * lock. The organiser PIN also opens the referee door, so organiser trust
+ * covers both.
+ */
+export function rolesThroughLock(
+  allow: readonly TrustRole[],
+  trustedRole: TrustRole | null,
+): TrustRole[] {
+  if (trustedRole === "organiser") return [...allow];
+  if (trustedRole === "referee") return allow.filter((role) => role === "referee");
+  return [];
+}
+
+/**
+ * The role to remember a source as trusted for after it gets `matched` right.
+ *
+ * Signing in as referee on a phone the organiser already uses must not demote
+ * it, so a still-valid organiser trust is kept.
+ */
+export function nextTrustedRole(current: TrustRole | null, matched: TrustRole): TrustRole {
+  return current === "organiser" ? "organiser" : matched;
 }

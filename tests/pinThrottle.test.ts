@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_SOURCE_ID,
   TRUST_MS,
+  nextTrustedRole,
   readSource,
+  rolesThroughLock,
   sourceId,
   sourceKey,
   tournamentFailures,
@@ -31,6 +34,10 @@ describe("sourceId", () => {
     expect(sourceId("   ")).toBeNull();
     expect(sourceId(42)).toBeNull();
   });
+
+  it("caps a padded id so the hash input stays bounded", () => {
+    expect(sourceId("x".repeat(500))).toBe("x".repeat(MAX_SOURCE_ID));
+  });
 });
 
 describe("sourceKey", () => {
@@ -54,7 +61,7 @@ describe("tournamentFailures", () => {
 
 describe("readSource", () => {
   it("gives a source with no record a clean, untrusted slate", () => {
-    expect(readSource(null, NOW, QUIET_MS)).toEqual({ lockedFor: 0, trusted: false, spent: null });
+    expect(readSource(null, NOW, QUIET_MS)).toEqual({ lockedFor: 0, trustedRole: null, spent: null });
   });
 
   it("counts recent failures against the source", () => {
@@ -77,18 +84,68 @@ describe("readSource", () => {
 
   it("trusts a device that signed in, until the trust runs out", () => {
     const signedIn = NOW - 1_000;
-    const row = record({ failed: 0, contributed: 0, trustedUntil: signedIn + TRUST_MS });
-    expect(readSource(row, NOW, QUIET_MS).trusted).toBe(true);
-    expect(readSource(row, signedIn + TRUST_MS - 1, QUIET_MS).trusted).toBe(true);
-    expect(readSource(row, signedIn + TRUST_MS, QUIET_MS).trusted).toBe(false);
+    const row = record({
+      failed: 0,
+      contributed: 0,
+      trustedUntil: signedIn + TRUST_MS,
+      trustedRole: "organiser",
+    });
+    expect(readSource(row, NOW, QUIET_MS).trustedRole).toBe("organiser");
+    expect(readSource(row, signedIn + TRUST_MS - 1, QUIET_MS).trustedRole).toBe("organiser");
+    expect(readSource(row, signedIn + TRUST_MS, QUIET_MS).trustedRole).toBeNull();
+  });
+
+  it("reads trust written before roles existed as the narrower referee trust", () => {
+    const row = record({ trustedUntil: NOW + TRUST_MS });
+    expect(readSource(row, NOW, QUIET_MS).trustedRole).toBe("referee");
   });
 
   it("keeps a trusted device subject to its own lock", () => {
-    const row = record({ lockedUntil: NOW + 60_000, trustedUntil: NOW + TRUST_MS });
-    expect(readSource(row, NOW, QUIET_MS)).toMatchObject({ lockedFor: 60_000, trusted: true });
+    const row = record({
+      lockedUntil: NOW + 60_000,
+      trustedUntil: NOW + TRUST_MS,
+      trustedRole: "referee",
+    });
+    expect(readSource(row, NOW, QUIET_MS)).toMatchObject({
+      lockedFor: 60_000,
+      trustedRole: "referee",
+    });
   });
 
   it("covers a tournament weekend with room to spare", () => {
     expect(TRUST_MS).toBeGreaterThanOrEqual(7 * 24 * 60 * 60 * 1000);
+  });
+});
+
+describe("rolesThroughLock", () => {
+  const both = ["organiser", "referee"] as const;
+
+  it("lets organiser trust try either PIN", () => {
+    expect(rolesThroughLock(both, "organiser")).toEqual(["organiser", "referee"]);
+    expect(rolesThroughLock(["organiser"], "organiser")).toEqual(["organiser"]);
+  });
+
+  it("keeps a referee phone away from the organiser PIN while locked", () => {
+    expect(rolesThroughLock(both, "referee")).toEqual(["referee"]);
+    expect(rolesThroughLock(["organiser"], "referee")).toEqual([]);
+  });
+
+  it("lets a stranger try nothing", () => {
+    expect(rolesThroughLock(both, null)).toEqual([]);
+  });
+});
+
+describe("nextTrustedRole", () => {
+  it("remembers the PIN a new device got right", () => {
+    expect(nextTrustedRole(null, "referee")).toBe("referee");
+    expect(nextTrustedRole(null, "organiser")).toBe("organiser");
+  });
+
+  it("promotes a referee phone that later signs in as organiser", () => {
+    expect(nextTrustedRole("referee", "organiser")).toBe("organiser");
+  });
+
+  it("never demotes an organiser phone that signs in as referee", () => {
+    expect(nextTrustedRole("organiser", "referee")).toBe("organiser");
   });
 });

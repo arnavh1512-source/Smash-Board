@@ -50,7 +50,7 @@ export function EventPanel({
 
   return (
     <div>
-      <p className="m-0 px-4 py-2.5 text-[11px] tracking-[0.04em] opacity-60">
+      <p className="m-0 px-4 py-2.5 text-[11px] tracking-[0.04em] text-muted">
         {FORMAT_LABELS[event.format] ?? event.format} · {entrants} entrants ·{" "}
         {scoringSummary(scoring)}
         {semiFinalScoring ? ` · Semi-finals ${scoringSummary(semiFinalScoring)}` : ""}

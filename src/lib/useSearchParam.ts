@@ -7,6 +7,14 @@ function subscribe(onChange: () => void): () => void {
   return () => window.removeEventListener("popstate", onChange);
 }
 
+/** The same address with one query-string value set, or removed when null. */
+export function withSearchParam(href: string, name: string, value: string | null): URL {
+  const url = new URL(href);
+  if (value === null) url.searchParams.delete(name);
+  else url.searchParams.set(name, value);
+  return url;
+}
+
 /**
  * One query-string value, kept in the address bar so the view it selects is a
  * link someone can be sent, and the phone's back button behaves.
@@ -25,9 +33,7 @@ export function useSearchParam(
   );
   const setValue = useCallback(
     (next: string | null, mode: "push" | "replace" = "replace") => {
-      const url = new URL(window.location.href);
-      if (next === null) url.searchParams.delete(name);
-      else url.searchParams.set(name, next);
+      const url = withSearchParam(window.location.href, name, next);
       if (mode === "push") window.history.pushState(window.history.state, "", url);
       else window.history.replaceState(window.history.state, "", url);
       window.dispatchEvent(new PopStateEvent("popstate"));

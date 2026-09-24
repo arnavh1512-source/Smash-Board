@@ -4,7 +4,8 @@
  * It exists for one job: letting the server tell repeated wrong PINs from one
  * device apart from wrong PINs arriving from a hall full of people. It is not
  * a credential and it identifies nobody — it is a random number, stored beside
- * nothing else, sent only with a sign-in attempt.
+ * nothing else, sent only with a sign-in attempt or a new tournament, where it
+ * also keeps one browser's creations apart from everybody else's.
  *
  * Anybody who wants to can clear it, which is exactly why the tournament-wide
  * lockout still sits underneath the per-device throttle it feeds.

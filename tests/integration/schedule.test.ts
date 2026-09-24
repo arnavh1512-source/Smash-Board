@@ -1,6 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { api } from "../../convex/_generated/api";
+import { createSource } from "./source";
 import type { Id } from "../../convex/_generated/dataModel";
 import { DEFAULT_SCORING } from "../../src/lib/scoring";
 
@@ -35,6 +36,7 @@ const SCHEDULE_OPTIONS = {
 
 async function makeTournament(name: string, startDate: string) {
   return await client.mutation(api.tournaments.create, {
+    client: createSource(),
     name: `${name} ${Date.now()}`,
     venue: "Ahmedabad",
     startDate,
@@ -310,6 +312,7 @@ describe("an order of play has to fit inside the tournament's own dates", () => 
 
   beforeAll(async () => {
     const created = await client.mutation(api.tournaments.create, {
+      client: createSource(),
       name: `End Date ${Date.now()}`,
       venue: "Ahmedabad",
       startDate: "2026-11-20",

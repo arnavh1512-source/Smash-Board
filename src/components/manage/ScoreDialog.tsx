@@ -5,7 +5,7 @@ import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import type { EntryLookup } from "@/components/tournament/MatchRow";
-import { Alert, Badge, Button, Field, Input, cx } from "@/components/ui";
+import { Alert, Badge, Button, Field, Input, Sheet, cx } from "@/components/ui";
 import { scoringSummary, sideName, STATUS_LABELS } from "@/lib/display";
 import { errorMessage } from "@/lib/useSession";
 import { hasPlayedResult } from "@/lib/results";
@@ -73,6 +73,7 @@ export function ScoreDialog({
   const [scheduledAt, setScheduledAt] = useState(match.scheduledAt ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const aEntry = match.aId ? entries.get(match.aId) : undefined;
   const bEntry = match.bId ? entries.get(match.bId) : undefined;
@@ -143,250 +144,277 @@ export function ScoreDialog({
   }
 
   const canAddSet = sets.length < scoring.bestOf;
+  const current = sets[sets.length - 1];
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={heading}
-      className="fixed inset-0 z-[60] flex items-end justify-center bg-[color-mix(in_srgb,#201e1d_55%,transparent)] sm:items-center sm:p-4"
-    >
-      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto border border-[var(--color-divider)] bg-[var(--color-bg)]">
-        <header className="rule-b2 flex items-start gap-3 bg-[var(--color-surface)] px-4 py-3.5">
-          <div className="min-w-0 flex-1">
-            <h6 className="m-0">{heading}</h6>
-            <p className="m-0 mt-1 truncate text-[11px] opacity-55">
-              {event.name} · {scoringSummary(scoring)}
-            </p>
-          </div>
-          <Button variant="ghost" className="min-h-10 text-[12px]" onClick={onClose}>
-            Close
-          </Button>
-        </header>
+    <Sheet label={heading} onClose={onClose}>
+      <header className="rule-b2 flex items-start gap-3 bg-[var(--color-surface)] px-4 py-3.5">
+        <div className="min-w-0 flex-1">
+          <h6 className="m-0">{heading}</h6>
+          <p className="m-0 mt-1 truncate text-[11px] text-muted">
+            {event.name} · {scoringSummary(scoring)}
+          </p>
+        </div>
+        <Button variant="ghost" className="text-[12px]" onClick={onClose}>
+          Close
+        </Button>
+      </header>
 
-        <div className="flex flex-col gap-4 px-4 py-4">
-          {decided ? (
-            <Alert kind="warning">
-              <strong>This match already has a result.</strong> Saving replaces it. Whoever the
-              change makes the winner is carried into the next round, and anybody the old result
-              had sent through is taken back out of it.
-            </Alert>
-          ) : null}
+      <div className="flex flex-col gap-4 px-4 py-4">
+        {decided ? (
+          <Alert kind="warning">
+            <strong>This match already has a result.</strong> Saving replaces it. Whoever the
+            change makes the winner is carried into the next round, and anybody the old result
+            had sent through is taken back out of it.
+          </Alert>
+        ) : null}
 
-          {!bothDecided ? (
-            <Alert kind="info">
-              Both sides must be decided before a score can be entered. Finish the earlier matches
-              first.
-            </Alert>
-          ) : null}
+        {!bothDecided ? (
+          <Alert kind="info">
+            Both sides must be decided before a score can be entered. Finish the earlier matches
+            first.
+          </Alert>
+        ) : null}
 
-          <div className="flex flex-col gap-2">
-            {(
-              [
-                { side: "a" as const, name: aName },
-                { side: "b" as const, name: bName },
-              ]
-            ).map(({ side, name }) => (
-              <div key={side} className="flex items-center gap-2">
-                <p className="m-0 min-w-0 flex-1 truncate text-[14px] font-extrabold">{name}</p>
-                <Button
-                  variant="secondary"
-                  className="min-h-12 w-12 justify-center"
-                  disabled={!bothDecided}
-                  onClick={() => undoPoint(side)}
-                  aria-label={`Remove a point from ${name}`}
-                >
-                  −1
-                </Button>
-                <Button
-                  className="min-h-12 w-12 justify-center"
-                  disabled={!bothDecided}
-                  onClick={() => tapPoint(side)}
-                  aria-label={`Add a point for ${name}`}
-                >
-                  +1
-                </Button>
-              </div>
-            ))}
-          </div>
+        {/* Each side gets half the width and a thumb-sized target, so a scorer
+            watching the rally can tap without looking down for long. */}
+        <div className="grid grid-cols-2 gap-2">
+          {(
+            [
+              { side: "a" as const, name: aName },
+              { side: "b" as const, name: bName },
+            ]
+          ).map(({ side, name }) => (
+            <div key={side} className="flex min-w-0 flex-col gap-2">
+              <p className="m-0 break-words text-[14px] font-extrabold leading-tight">{name}</p>
+              <p
+                className="num m-0 text-[48px] font-extrabold leading-none"
+                aria-label={`${name}: ${current[side]} in set ${sets.length}`}
+              >
+                {current[side]}
+              </p>
+              <Button
+                block
+                className="min-h-16 justify-center text-[20px]"
+                disabled={!bothDecided}
+                onClick={() => tapPoint(side)}
+                aria-label={`Add a point for ${name}`}
+              >
+                +1
+              </Button>
+              <Button
+                variant="ghost"
+                className="self-start text-[12px]"
+                disabled={!bothDecided}
+                onClick={() => undoPoint(side)}
+                aria-label={`Take a point back from ${name}`}
+              >
+                Undo
+              </Button>
+            </div>
+          ))}
+        </div>
 
-          <div className="flex flex-col gap-2 border border-[var(--color-divider)] bg-[var(--color-surface)] p-3.5">
-            <p className="field-label m-0">Sets</p>
-            {sets.map((set, index) => {
-              const decided = (() => {
-                try {
-                  return setWinner(set, scoring);
-                } catch {
-                  return null;
-                }
-              })();
-              return (
-                <div key={index} className="flex items-center gap-2">
-                  <span className="w-14 shrink-0 text-[11px] uppercase tracking-[0.08em] opacity-55">
-                    Set {index + 1}
-                  </span>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={99}
-                    value={set.a}
-                    onChange={(e) => editSet(index, "a", e.target.value)}
-                    className={cx("num w-20 min-h-11", decided === "a" && "font-extrabold")}
-                    aria-label={`${aName} score in set ${index + 1}`}
-                  />
-                  <span className="opacity-45">–</span>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={99}
-                    value={set.b}
-                    onChange={(e) => editSet(index, "b", e.target.value)}
-                    className={cx("num w-20 min-h-11", decided === "b" && "font-extrabold")}
-                    aria-label={`${bName} score in set ${index + 1}`}
-                  />
-                  {sets.length > 1 ? (
-                    <Button
-                      variant="ghost"
-                      className="min-h-11"
-                      onClick={() => setSets(sets.filter((_, i) => i !== index))}
-                    >
-                      Remove
-                    </Button>
-                  ) : null}
-                </div>
-              );
-            })}
-            {canAddSet ? (
-              <div>
-                <Button
-                  variant="ghost"
-                  className="min-h-11"
-                  onClick={() => setSets([...sets, { a: 0, b: 0 }])}
-                >
-                  Add a set
-                </Button>
-              </div>
-            ) : null}
-            <p className="m-0 text-[12px] opacity-70">{outcomeLabel(cleanSets(), scoring)}</p>
-          </div>
-
-          {error ? <Alert kind="error">{error}</Alert> : null}
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              className="min-h-12"
-              disabled={busy || !bothDecided}
-              onClick={() =>
-                run(() => setScore({ matchId: match._id, token, sets: cleanSets() }), true)
+        <div className="flex flex-col gap-2 border border-[var(--color-divider)] bg-[var(--color-surface)] p-3.5">
+          <p className="field-label m-0">Sets</p>
+          {sets.map((set, index) => {
+            const decided = (() => {
+              try {
+                return setWinner(set, scoring);
+              } catch {
+                return null;
               }
-            >
-              {busy ? "Saving…" : decided ? "Save correction" : "Save score"}
-            </Button>
+            })();
+            return (
+              <div key={index} className="flex flex-wrap items-center gap-2">
+                <span className="w-14 shrink-0 text-[11px] uppercase tracking-[0.08em] text-muted">
+                  Set {index + 1}
+                </span>
+                <Input
+                  type="number"
+                  min={0}
+                  max={99}
+                  inputMode="numeric"
+                  value={set.a}
+                  onChange={(e) => editSet(index, "a", e.target.value)}
+                  className={cx("num w-20 min-h-11", decided === "a" && "font-extrabold")}
+                  aria-label={`${aName} score in set ${index + 1}`}
+                />
+                <span className="text-muted">–</span>
+                <Input
+                  type="number"
+                  min={0}
+                  max={99}
+                  inputMode="numeric"
+                  value={set.b}
+                  onChange={(e) => editSet(index, "b", e.target.value)}
+                  className={cx("num w-20 min-h-11", decided === "b" && "font-extrabold")}
+                  aria-label={`${bName} score in set ${index + 1}`}
+                />
+                {sets.length > 1 ? (
+                  <Button
+                    variant="ghost"
+                    className="btn-icon"
+                    onClick={() => setSets(sets.filter((_, i) => i !== index))}
+                    aria-label={`Remove set ${index + 1}`}
+                  >
+                    ✕
+                  </Button>
+                ) : null}
+              </div>
+            );
+          })}
+          {canAddSet ? (
+            <div>
+              <Button
+                variant="ghost"
+                className="min-h-11"
+                onClick={() => setSets([...sets, { a: 0, b: 0 }])}
+              >
+                Add a set
+              </Button>
+            </div>
+          ) : null}
+          <p className="m-0 text-[12px] text-muted">{outcomeLabel(cleanSets(), scoring)}</p>
+        </div>
+
+        {error ? <Alert kind="error">{error}</Alert> : null}
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            className="min-h-12"
+            disabled={busy || !bothDecided}
+            onClick={() =>
+              run(() => setScore({ matchId: match._id, token, sets: cleanSets() }), true)
+            }
+          >
+            {busy ? "Saving…" : decided ? "Save correction" : "Save score"}
+          </Button>
+          <Button
+            variant="secondary"
+            className="min-h-12"
+            disabled={busy || !bothDecided}
+            onClick={() =>
+              run(() => setScore({ matchId: match._id, token, sets: cleanSets(), markLive: false }))
+            }
+          >
+            Save and keep open
+          </Button>
+        </div>
+
+        <details className="border border-[var(--color-divider)] p-3.5">
+          <summary className="flex min-h-11 cursor-pointer items-center text-[12px] uppercase tracking-[0.08em]">
+            Court, time, walkover and reset
+          </summary>
+
+          <div className="mt-3.5 grid gap-3.5 sm:grid-cols-2">
+            <Field label="Court">
+              <Input
+                value={court}
+                maxLength={40}
+                onChange={(e) => setCourt(e.target.value)}
+                placeholder="Court 2"
+              />
+            </Field>
+            <Field label="Start time">
+              <Input
+                type="datetime-local"
+                value={scheduledAt}
+                min={startDate ? `${startDate}T00:00` : undefined}
+                max={endDate ? `${endDate}T23:59` : undefined}
+                onChange={(e) => setScheduledAt(e.target.value)}
+              />
+            </Field>
+          </div>
+          <div className="mt-3.5">
             <Button
               variant="secondary"
               className="min-h-12"
-              disabled={busy || !bothDecided}
-              onClick={() =>
-                run(() => setScore({ matchId: match._id, token, sets: cleanSets(), markLive: false }))
-              }
+              disabled={busy}
+              onClick={() => run(() => setDetails({ matchId: match._id, token, court, scheduledAt }))}
             >
-              Save and keep open
+              Save court and time
             </Button>
           </div>
 
-          <details className="border border-[var(--color-divider)] p-3.5">
-            <summary className="cursor-pointer text-[12px] uppercase tracking-[0.08em]">
-              Court, time, walkover and reset
-            </summary>
-
-            <div className="mt-3.5 grid gap-3.5 sm:grid-cols-2">
-              <Field label="Court">
-                <Input
-                  value={court}
-                  maxLength={40}
-                  onChange={(e) => setCourt(e.target.value)}
-                  placeholder="Court 2"
-                />
-              </Field>
-              <Field label="Start time">
-                <Input
-                  type="datetime-local"
-                  value={scheduledAt}
-                  min={startDate ? `${startDate}T00:00` : undefined}
-                  max={endDate ? `${endDate}T23:59` : undefined}
-                  onChange={(e) => setScheduledAt(e.target.value)}
-                />
-              </Field>
+          <div className="rule-t mt-4 pt-3.5">
+            <p className="field-label m-0">Walkover</p>
+            <p className="m-0 mt-1 text-[12px] text-muted">
+              {played
+                ? "This match already has a result. Reset it below, then award the walkover — a played score is never overwritten in one tap."
+                : "Records a win with no score. Use it when one side does not turn up. It counts as a win and a loss in the group table but adds no sets or points."}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {aEntry ? (
+                <Button
+                  variant="secondary"
+                  className="min-h-12"
+                  disabled={busy || played}
+                  onClick={() =>
+                    run(() => setWalkover({ matchId: match._id, token, winnerId: aEntry._id }), true)
+                  }
+                >
+                  {aName} wins
+                </Button>
+              ) : null}
+              {bEntry ? (
+                <Button
+                  variant="secondary"
+                  className="min-h-12"
+                  disabled={busy || played}
+                  onClick={() =>
+                    run(() => setWalkover({ matchId: match._id, token, winnerId: bEntry._id }), true)
+                  }
+                >
+                  {bName} wins
+                </Button>
+              ) : null}
             </div>
-            <div className="mt-3.5">
-              <Button
-                variant="secondary"
-                className="min-h-12"
-                disabled={busy}
-                onClick={() => run(() => setDetails({ matchId: match._id, token, court, scheduledAt }))}
-              >
-                Save court and time
-              </Button>
-            </div>
+          </div>
 
-            <div className="rule-t mt-4 pt-3.5">
-              <p className="field-label m-0">Walkover</p>
-              <p className="m-0 mt-1 text-[12px] opacity-70">
-                {played
-                  ? "This match already has a result. Reset it below, then award the walkover — a played score is never overwritten in one tap."
-                  : "Records a win with no score. Use it when one side does not turn up. It counts as a win and a loss in the group table but adds no sets or points."}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {aEntry ? (
+          <div className="rule-t mt-4 pt-3.5">
+            {confirmReset ? (
+              <div className="flex flex-col gap-2">
+                <Alert kind="warning">
+                  Clear this match back to scheduled? Its score will be lost.
+                </Alert>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="danger"
+                    className="min-h-12"
+                    disabled={busy}
+                    onClick={() => run(() => resetMatch({ matchId: match._id, token }), true)}
+                  >
+                    Yes, clear it
+                  </Button>
                   <Button
                     variant="secondary"
                     className="min-h-12"
-                    disabled={busy || played}
-                    onClick={() =>
-                      run(() => setWalkover({ matchId: match._id, token, winnerId: aEntry._id }), true)
-                    }
+                    disabled={busy}
+                    onClick={() => setConfirmReset(false)}
                   >
-                    {aName} wins
+                    Keep the score
                   </Button>
-                ) : null}
-                {bEntry ? (
-                  <Button
-                    variant="secondary"
-                    className="min-h-12"
-                    disabled={busy || played}
-                    onClick={() =>
-                      run(() => setWalkover({ matchId: match._id, token, winnerId: bEntry._id }), true)
-                    }
-                  >
-                    {bName} wins
-                  </Button>
-                ) : null}
+                </div>
               </div>
-            </div>
-
-            <div className="rule-t mt-4 pt-3.5">
+            ) : (
               <Button
                 variant="danger"
                 className="min-h-12"
                 disabled={busy}
-                onClick={() => {
-                  if (!window.confirm("Clear this match back to scheduled? Its score will be lost.")) {
-                    return;
-                  }
-                  void run(() => resetMatch({ matchId: match._id, token }), true);
-                }}
+                onClick={() => setConfirmReset(true)}
               >
                 Reset this match
               </Button>
-            </div>
-          </details>
+            )}
+          </div>
+        </details>
 
-          <p className="m-0 flex items-center gap-2 text-[11px] uppercase tracking-[0.08em] opacity-55">
-            Status now
-            <Badge tone="neutral">{STATUS_LABELS[match.status] ?? match.status}</Badge>
-          </p>
-        </div>
+        <p className="m-0 flex items-center gap-2 text-[11px] uppercase tracking-[0.08em] text-muted">
+          Status now
+          <Badge tone="neutral">{STATUS_LABELS[match.status] ?? match.status}</Badge>
+        </p>
       </div>
-    </div>
+    </Sheet>
   );
 }

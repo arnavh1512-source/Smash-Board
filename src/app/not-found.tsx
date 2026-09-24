@@ -11,7 +11,7 @@ export default function NotFound() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-16">
       <h3>Page not found</h3>
-      <p className="text-[13px] opacity-75">
+      <p className="text-[13px] text-muted">
         That link does not exist. It may have been mistyped, or the organiser may have deleted the
         tournament it pointed at.
       </p>

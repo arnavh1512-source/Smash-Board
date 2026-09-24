@@ -1,0 +1,104 @@
+name: CI
+
+# Nothing reaches Vercel except through main, so this is the gate in front of
+# production: lint, types, unit tests and a real build have to pass before a
+# change can be merged or deployed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# The jobs only read the repository. Anything more has to be granted per job.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, types, tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Types
+        run: npm run typecheck
+
+      - name: Unit tests with coverage
+        run: npm run test:coverage
+
+      - name: Build
+        # The build only needs the URL to be present and well-formed; nothing
+        # is fetched from the deployment at build time. Real deployments get
+        # the real value from Vercel.
+        env:
+          NEXT_PUBLIC_CONVEX_URL: https://example-ci-0000.convex.cloud
+        run: npm run build
+
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The browser tests drive a real Convex deployment, so they only run where
+    # the deployment secrets exist. A fork's pull request has none, and must
+    # not be failed for that.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check for a deployment to test against
+        id: secrets
+        run: |
+          echo "present=${{ secrets.NEXT_PUBLIC_CONVEX_URL != '' }}" >> "$GITHUB_OUTPUT"
+          echo "deploy=${{ secrets.E2E_CONVEX_DEPLOY_KEY != '' }}" >> "$GITHUB_OUTPUT"
+
+      # The browser tests drive the functions and schema on the test deployment,
+      # not the ones in this checkout. Pushing this checkout's backend first
+      # means a change is tested against its own server code, not last week's.
+      - name: Push this checkout's functions to the test deployment
+        if: steps.secrets.outputs.present == 'true' && steps.secrets.outputs.deploy == 'true'
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.E2E_CONVEX_DEPLOY_KEY }}
+        run: npx convex dev --once
+
+      - if: steps.secrets.outputs.present == 'true' && steps.secrets.outputs.deploy != 'true'
+        run: echo "::warning::No E2E_CONVEX_DEPLOY_KEY secret — the browser tests run against whatever backend the test deployment already has."
+
+      - if: steps.secrets.outputs.present == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - if: steps.secrets.outputs.present == 'true'
+        env:
+          NEXT_PUBLIC_CONVEX_URL: ${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
+        run: npm run test:e2e
+
+      - if: steps.secrets.outputs.present == 'true' && failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - if: steps.secrets.outputs.present != 'true'
+        run: echo "No NEXT_PUBLIC_CONVEX_URL secret configured — skipping the browser tests."

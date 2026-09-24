@@ -54,7 +54,7 @@ export function DrawPanel({
     <div>
       <Section>
         <h6 className="m-0">Draw</h6>
-        <p className="m-0 text-[13px] opacity-70">
+        <p className="m-0 text-[13px] text-muted">
           {playingCount} entrant{playingCount === 1 ? "" : "s"} are available for the draw. Withdrawn
           entrants are left out.
         </p>

@@ -17,6 +17,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { api } from "../../convex/_generated/api";
+import { createSource } from "./source";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { DEFAULT_SCORING, type ScoringConfig } from "../../src/lib/scoring";
 
@@ -121,6 +122,7 @@ async function playOutKnockout(eventId: Id<"events">): Promise<void> {
 
 beforeAll(async () => {
   const created = await client.mutation(api.tournaments.create, {
+    client: createSource(),
     name: `Scenario Run ${Date.now()}`,
     venue: "Ahmedabad",
     startDate: "2026-11-14",

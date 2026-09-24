@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
 import type { Doc } from "../../../convex/_generated/dataModel";
-import { Badge, Button, LiveDot, cx } from "@/components/ui";
+import { Badge, Button, LiveDot, Sheet, cx } from "@/components/ui";
 import { STATUS_LABELS } from "@/lib/display";
 import {
   isFinished,
@@ -64,27 +63,27 @@ function MatchLine({
   return (
     <li className="rule-b flex items-start gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
-        <p className="m-0 flex items-center gap-1.5 text-[11px] uppercase tracking-[0.08em] opacity-55">
+        <p className="m-0 flex items-center gap-1.5 text-[11px] uppercase tracking-[0.08em] text-muted">
           {live ? <LiveDot size={6} /> : null}
           <span className="truncate">{title}</span>
         </p>
         <p className="m-0 mt-1 text-[14px] leading-snug">
-          <span className="opacity-45">v </span>
+          <span className="text-muted">v </span>
           <SideNames entry={opponent} label={opponentLabel} />
         </p>
         <p className="num m-0 mt-1 text-[13px]">
-          {match.court ? <strong>{match.court}</strong> : <span className="opacity-55">Court not set</span>}
-          <span className="opacity-45"> · </span>
-          {time ? <span>{time}</span> : <span className="opacity-55">Time not set</span>}
+          {match.court ? <strong>{match.court}</strong> : <span className="text-muted">Court not set</span>}
+          <span className="text-muted"> · </span>
+          {time ? <span>{time}</span> : <span className="text-muted">Time not set</span>}
         </p>
         {match.sets.length > 0 ? (
-          <p className="num m-0 mt-1 text-[13px] opacity-75">{scoreLine(match, side)}</p>
+          <p className="num m-0 mt-1 text-[13px] text-muted">{scoreLine(match, side)}</p>
         ) : null}
       </div>
       <span className="flex shrink-0 flex-col items-end gap-1">
         <Badge tone={live ? "accent" : "neutral"}>{STATUS_LABELS[match.status] ?? match.status}</Badge>
         {result ? (
-          <span className={cx("text-[11px] uppercase tracking-[0.08em]", result === "Won" ? "font-extrabold" : "opacity-55")}>
+          <span className={cx("text-[11px] uppercase tracking-[0.08em]", result === "Won" ? "font-extrabold" : "text-muted")}>
             {result}
           </span>
         ) : null}
@@ -106,14 +105,6 @@ export function PlayerSheet({
   entries: EntryLookup;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const mine = matchesOfPerson(name, matches, entries);
   const next = nextMatchOf(mine);
   const eventOf = new Map<string, Doc<"events">>(events.map((event) => [event._id, event]));
@@ -136,82 +127,72 @@ export function PlayerSheet({
   });
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${name}'s matches`}
-      className="fixed inset-0 z-[60] flex items-end justify-center bg-[color-mix(in_srgb,#201e1d_55%,transparent)] sm:items-center sm:p-4"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto border border-[var(--color-divider)] bg-[var(--color-bg)]">
-        <header className="rule-b2 sticky top-0 z-10 flex items-start gap-3 bg-[var(--color-surface)] px-4 py-3.5">
-          <div className="min-w-0 flex-1">
-            <h6 className="m-0 truncate">{name}</h6>
-            <p className="m-0 mt-1 text-[11px] opacity-60">
-              {categories.length === 0
-                ? "Not in any draw"
-                : categories.map((c, i) => (
-                    <span key={c.eventId}>
-                      {i > 0 ? " · " : ""}
-                      {c.name}
-                      {c.partner ? (
-                        <>
-                          {" "}with <PlayerName name={c.partner} />
-                        </>
-                      ) : null}
-                    </span>
-                  ))}
-            </p>
-          </div>
-          <Button variant="ghost" className="min-h-10 text-[12px]" onClick={onClose} autoFocus>
-            Close
-          </Button>
-        </header>
-
-        {mine.length === 0 ? (
-          <p className="note m-4">
-            No matches for {name} yet. The draw may not have been made, or the name may be spelled
-            differently on the entry list.
+    <Sheet label={`${name}'s matches`} onClose={onClose} closeOnBackdrop>
+      <header className="rule-b2 sticky top-0 z-10 flex items-start gap-3 bg-[var(--color-surface)] px-4 py-3.5">
+        <div className="min-w-0 flex-1">
+          <h6 className="m-0 break-words">{name}</h6>
+          <p className="m-0 mt-1 text-[11px] text-muted">
+            {categories.length === 0
+              ? "Not in any draw"
+              : categories.map((c, i) => (
+                  <span key={c.eventId}>
+                    {i > 0 ? " · " : ""}
+                    {c.name}
+                    {c.partner ? (
+                      <>
+                        {" "}with <PlayerName name={c.partner} />
+                      </>
+                    ) : null}
+                  </span>
+                ))}
           </p>
-        ) : (
-          <>
-            {next ? (
-              <section className="rule-b2 border-l-2 border-l-[var(--color-accent)] px-4 py-3">
-                <p className="m-0 text-[11px] uppercase tracking-[0.08em] opacity-60">
-                  {next.status === "live" ? "On court now" : "Next match"}
-                </p>
-                <p className="num m-0 mt-1 text-[20px] font-extrabold leading-tight">
-                  {next.court ?? "Court to be announced"}
-                  {when(next, showDay) ? ` · ${when(next, showDay)}` : ""}
-                </p>
-                <p className="m-0 mt-1 text-[12px] opacity-70">{titleOf(next)}</p>
-              </section>
-            ) : (
-              <p className="rule-b2 m-0 px-4 py-3 text-[13px] opacity-70">
-                All of {name}&apos;s matches are finished.
+        </div>
+        <Button variant="ghost" className="text-[12px]" onClick={onClose} autoFocus>
+          Close
+        </Button>
+      </header>
+
+      {mine.length === 0 ? (
+        <p className="note m-4">
+          No matches for {name} yet. The draw may not have been made, or the name may be spelled
+          differently on the entry list.
+        </p>
+      ) : (
+        <>
+          {next ? (
+            <section className="rule-b2 border-l-2 border-l-[var(--color-accent)] px-4 py-3">
+              <p className="m-0 text-[11px] uppercase tracking-[0.08em] text-muted">
+                {next.status === "live" ? "On court now" : "Next match"}
               </p>
-            )}
-            <ul className="m-0 list-none p-0">
-              {mine.map((match) => (
-                <MatchLine
-                  key={match._id}
-                  match={match}
-                  side={sideOf(match, name, entries)!}
-                  title={titleOf(match)}
-                  entries={entries}
-                  showDay={showDay}
-                />
-              ))}
-            </ul>
-            <p className="m-0 px-4 py-3 text-[11px] opacity-55">
-              Times follow the order of play and move if the organiser replans it. Listen for your
-              name at the desk before walking on.
+              <p className="num m-0 mt-1 text-[20px] font-extrabold leading-tight">
+                {next.court ?? "Court to be announced"}
+                {when(next, showDay) ? ` · ${when(next, showDay)}` : ""}
+              </p>
+              <p className="m-0 mt-1 text-[12px] text-muted">{titleOf(next)}</p>
+            </section>
+          ) : (
+            <p className="rule-b2 m-0 px-4 py-3 text-[13px] text-muted">
+              All of {name}&apos;s matches are finished.
             </p>
-          </>
-        )}
-      </div>
-    </div>
+          )}
+          <ul className="m-0 list-none p-0">
+            {mine.map((match) => (
+              <MatchLine
+                key={match._id}
+                match={match}
+                side={sideOf(match, name, entries)!}
+                title={titleOf(match)}
+                entries={entries}
+                showDay={showDay}
+              />
+            ))}
+          </ul>
+          <p className="m-0 px-4 py-3 text-[11px] text-muted">
+            Times follow the order of play and move if the organiser replans it. Listen for your
+            name at the desk before walking on.
+          </p>
+        </>
+      )}
+    </Sheet>
   );
 }

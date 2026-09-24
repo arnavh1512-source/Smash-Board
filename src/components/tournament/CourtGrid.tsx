@@ -57,7 +57,7 @@ function CourtColumn({
     <section className="border border-[var(--color-divider)]">
       <header className="rule-b2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 bg-[var(--color-surface)] px-3.5 py-2.5">
         <h6 className="m-0">{court}</h6>
-        <span className="num text-[11px] opacity-55">
+        <span className="num text-[11px] text-muted">
           {rows.length} {rows.length === 1 ? "match" : "matches"} · {formatDuration(onCourt)} on
           court · {clockOf(first.scheduledAt)}–{clockOf(last.scheduledAt)}
         </span>
@@ -73,12 +73,12 @@ function CourtColumn({
                 {clockOf(row.scheduledAt)}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="m-0 flex items-center gap-1.5 text-[11px] uppercase tracking-[0.08em] opacity-55">
+                <p className="m-0 flex items-center gap-1.5 text-[11px] uppercase tracking-[0.08em] text-muted">
                   {live ? <LiveDot size={6} /> : null}
-                  <span className="truncate">{eventName.get(row.match.eventId) ?? "Category"}</span>
+                  <span className="min-w-0 break-words">{eventName.get(row.match.eventId) ?? "Category"}</span>
                 </p>
-                <p className="m-0 truncate text-[14px] leading-tight">
-                  <SideNames entry={a} label={row.match.aLabel} /> <span className="opacity-45">v</span>{" "}
+                <p className="m-0 break-words text-[14px] leading-tight">
+                  <SideNames entry={a} label={row.match.aLabel} /> <span className="text-muted">v</span>{" "}
                   <SideNames entry={b} label={row.match.bLabel} />
                 </p>
               </div>
@@ -125,11 +125,11 @@ export function CourtGrid({
   return (
     <div className="flex flex-col gap-3.5 px-4 py-4">
       {days.size > 1 ? (
-        <p className="m-0 text-[11px] uppercase tracking-[0.08em] opacity-55">
+        <p className="m-0 text-[11px] uppercase tracking-[0.08em] text-muted">
           {days.size} days of play
         </p>
       ) : (
-        <p className="m-0 text-[11px] uppercase tracking-[0.08em] opacity-55">
+        <p className="m-0 text-[11px] uppercase tracking-[0.08em] text-muted">
           {dayOf([...courts.values()][0][0].scheduledAt)}
         </p>
       )}

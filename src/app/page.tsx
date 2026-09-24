@@ -48,7 +48,7 @@ export default function HomePage() {
         {FEATURES.map((feature) => (
           <div key={feature.title} className="bg-[var(--color-bg)] px-4 py-3.5">
             <dt className="text-[14px] font-extrabold leading-tight">{feature.title}</dt>
-            <dd className="mt-1.5 text-[12px] leading-relaxed opacity-75">{feature.body}</dd>
+            <dd className="mt-1.5 text-[12px] leading-relaxed text-muted">{feature.body}</dd>
           </div>
         ))}
       </dl>
@@ -74,18 +74,19 @@ export default function HomePage() {
       <section className="rule-b2 px-4 py-5">
         <div className="flex items-baseline justify-between gap-3">
           <h4 className="m-0">Live and recent</h4>
-          <Link href="/#create" className="text-[13px]">
+          <Link href="/#create" className="inline-flex min-h-[44px] items-center text-[13px]">
             Start your own
           </Link>
         </div>
         <PublicTournamentList />
       </section>
 
-      <section className="bg-[var(--color-accent)] px-4 py-[22px] text-[#f3f2f2]">
+      {/* The accent itself is too light behind 13px text; this is the button fill, 5.3:1. */}
+      <section className="bg-[#c41d05] px-4 py-[22px] text-[#f3f2f2]">
         <p className="m-0 text-[24px] font-extrabold leading-[1.1]">
           One link. Everyone watching.
         </p>
-        <p className="mb-4 mt-2 text-[13px] opacity-90">
+        <p className="mb-4 mt-2 text-[13px]">
           Send the scoreboard to the club group and stop answering “what’s the score?”.
         </p>
         <a

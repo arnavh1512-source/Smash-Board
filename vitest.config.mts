@@ -15,7 +15,7 @@ export default defineConfig({
     testTimeout: 30_000,
     coverage: {
       provider: "v8",
-      include: ["src/lib/**/*.ts"],
+      include: ["src/lib/**/*.ts", "convex/lib/progression.ts", "convex/lib/secret.ts"],
       // useSession is a React hook over sessionStorage and site.ts is static config;
       // neither carries logic worth a unit test.
       exclude: ["src/lib/useSession.ts", "src/lib/site.ts"],

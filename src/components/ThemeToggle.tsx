@@ -43,7 +43,7 @@ export function ThemeToggle() {
       type="button"
       onClick={toggle}
       aria-pressed={dark}
-      className="btn btn-secondary min-h-9 px-2.5 text-[12px]"
+      className="btn btn-secondary px-2.5 text-[12px]"
     >
       {dark ? "Light" : "Dark"}
     </button>

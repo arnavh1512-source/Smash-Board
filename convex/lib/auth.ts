@@ -2,7 +2,8 @@
  * Access control.
  *
  * A tournament is guarded by a PIN chosen when it is created. The PIN is never
- * stored; only a SHA-256 hash of `salt + pin` is kept.
+ * stored; only a PBKDF2 hash of it under the tournament's salt is kept — see
+ * `derivePinHash`.
  *
  * An organiser may also set a second, optional referee PIN. It unlocks score
  * entry and nothing else, so an umpire can be handed a phone without also being
@@ -22,16 +23,21 @@
  *     to take a PIN.
  *
  * The token is stateless: a MAC over the tournament, the role, the expiry and
- * the PIN hash for that role, keyed by the tournament's own salt. Nothing is
- * stored, and rotating a PIN silently invalidates every token issued for it.
+ * the PIN hash for that role. Nothing is stored, and rotating a PIN silently
+ * invalidates every token issued for it. The key is the tournament's own salt
+ * combined with a deployment secret that never touches the database, so reading
+ * the tournament row is not enough to forge one — see `convex/lib/secret.ts`.
  */
 
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { tokenSecret } from "./secret";
 import {
   TRUST_MS,
+  nextTrustedRole,
   readSource,
+  rolesThroughLock,
   sourceId,
   sourceKey,
   tournamentFailures,
@@ -73,12 +79,10 @@ export const SESSION_MS = 12 * 60 * 60 * 1000;
 /**
  * Six, not four.
  *
- * The stored PIN is a SHA-256 of a per-tournament salt and the PIN, which
- * keeps plaintext out of the database but is deliberately fast to compute.
- * Anybody holding a copy of the database could therefore run the whole
- * four-digit space in a moment. Online guessing is already throttled; this is
- * about the offline case, and two more characters is the cheapest defence
- * against it that costs an organiser nothing at the desk.
+ * Online guessing is throttled; this is about somebody holding a copy of the
+ * database. The stored hash is slow on purpose (see `derivePinHash`), and two
+ * more characters multiply the work of running the whole space by a hundred
+ * at no cost to an organiser at the desk.
  */
 export const MIN_PIN_LENGTH = 6;
 export const MAX_PIN_LENGTH = 64;
@@ -93,9 +97,76 @@ export function newSalt(): string {
   return toHex(bytes.buffer);
 }
 
-export async function hashPin(pin: string, salt: string): Promise<string> {
-  const data = new TextEncoder().encode(`${salt}:${pin}`);
+/**
+ * A fast SHA-256 of `salt:value`.
+ *
+ * For throttle keys only — hashing a browser's random id so the attempt tables
+ * never hold the id itself. Those ids are 128 random bits, so a slow hash would
+ * buy nothing. PINs are short and human-chosen, and go through `derivePinHash`.
+ */
+export async function digest(value: string, salt: string): Promise<string> {
+  const data = new TextEncoder().encode(`${salt}:${value}`);
   return toHex(await crypto.subtle.digest("SHA-256", data));
+}
+
+/**
+ * PBKDF2-SHA256 work factor for new PIN hashes.
+ *
+ * A PIN is six-plus characters a person chose, so a fast hash of it falls to a
+ * laptop in minutes once the database leaks. This makes each guess cost real
+ * CPU. Stored inside the hash, so it can be raised later without stranding the
+ * PINs already set: an old count still verifies, and is upgraded on sign-in.
+ */
+export const PIN_ITERATIONS = 100_000;
+
+/** Marks a PBKDF2 hash. A bare 64-character hex string is the legacy SHA-256 form. */
+const PIN_HASH_PREFIX = "p1$";
+
+async function pbkdf2(pin: string, salt: string, iterations: number): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(pin), "PBKDF2", false, [
+    "deriveBits",
+  ]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt: new TextEncoder().encode(salt), iterations },
+    key,
+    256,
+  );
+  return toHex(bits);
+}
+
+/** The stored form of a PIN: `p1$<iterations>$<hex>`. */
+export async function derivePinHash(
+  pin: string,
+  salt: string,
+  iterations = PIN_ITERATIONS,
+): Promise<string> {
+  return `${PIN_HASH_PREFIX}${iterations}$${await pbkdf2(pin, salt, iterations)}`;
+}
+
+/**
+ * Whether `pin` is the one behind `stored`, and whether `stored` should be
+ * rewritten in the current format.
+ *
+ * Reads both formats, so tournaments created before PBKDF2 keep working; the
+ * caller upgrades the hash the first time the right PIN is entered.
+ */
+export async function verifyPin(
+  pin: string,
+  salt: string,
+  stored: string,
+): Promise<{ ok: boolean; stale: boolean }> {
+  if (!stored.startsWith(PIN_HASH_PREFIX)) {
+    return { ok: timingSafeEqual(await digest(pin, salt), stored), stale: true };
+  }
+  const [iterationText, expected] = stored.slice(PIN_HASH_PREFIX.length).split("$");
+  const iterations = Number(iterationText);
+  if (!Number.isSafeInteger(iterations) || iterations < 1 || typeof expected !== "string") {
+    return { ok: false, stale: false };
+  }
+  return {
+    ok: timingSafeEqual(await pbkdf2(pin, salt, iterations), expected),
+    stale: iterations !== PIN_ITERATIONS,
+  };
 }
 
 export function assertPinShape(pin: string, label = "Organiser PIN"): void {
@@ -156,7 +227,7 @@ async function mintToken(
   const bound = hashForRole(tournament, role);
   if (bound === null) throw new ConvexError("That role has no PIN set.");
   const mac = await sign(
-    tournament.pinSalt,
+    `${tokenSecret()}:${tournament.pinSalt}`,
     `${tournament._id}:${role}:${expiresAt}:${bound}`,
   );
   return `${role}.${expiresAt}.${mac}`;
@@ -226,40 +297,36 @@ export async function attemptSignIn(
   // any other, which is the point: an attacker who strips the id off their
   // requests lands in the most crowded, most quickly exhausted queue there is.
   const id = sourceId(source);
-  const sourceHash = await hashPin(sourceKey(id), tournament.pinSalt);
+  const sourceHash = await digest(sourceKey(id), tournament.pinSalt);
   const record = await ctx.db
     .query("pinAttempts")
     .withIndex("by_source", (q) => q.eq("tournamentId", tournamentId).eq("sourceHash", sourceHash))
     .unique();
-  const { lockedFor, trusted, spent } = readSource(record, now, SOURCE_LOCKOUT_MS);
+  const { lockedFor, trustedRole, spent } = readSource(record, now, SOURCE_LOCKOUT_MS);
 
   if (lockedFor > 0) return { ok: false, error: lockoutMessage(lockedFor, "device") };
   // A device that has already signed in is not shut out by other people's
-  // guesses. Its own wrong guesses still count below, and its own lock holds.
-  if (!trusted && tournament.pinLockedUntil && tournament.pinLockedUntil > now) {
-    return { ok: false, error: lockoutMessage(tournament.pinLockedUntil - now, "tournament") };
+  // guesses — for the PIN it proved it knows. Its own wrong guesses still count
+  // below, and its own lock holds.
+  const tournamentLockedFor = (tournament.pinLockedUntil ?? 0) - now;
+  const open = tournamentLockedFor > 0 ? rolesThroughLock(allow, trustedRole) : [...allow];
+  if (open.length === 0) {
+    return { ok: false, error: lockoutMessage(tournamentLockedFor, "tournament") };
   }
 
-  const candidate = await hashPin(typeof pin === "string" ? pin : "", tournament.pinSalt);
-  let matched: AccessRole | null = null;
-  if (allow.includes("organiser") && timingSafeEqual(candidate, tournament.pinHash)) {
-    matched = "organiser";
-  } else if (
-    allow.includes("referee") &&
-    tournament.refereePinHash &&
-    timingSafeEqual(candidate, tournament.refereePinHash)
-  ) {
-    matched = "referee";
-  }
+  const matched = await matchPin(tournament, typeof pin === "string" ? pin : "", open);
 
   if (!matched) {
     const sourceFailed = (spent?.failed ?? 0) + 1;
     const sourceLocked = sourceFailed >= SOURCE_MAX_ATTEMPTS;
     // The quota is what stops one person locking a tournament: past their
     // share, their wrong guesses are still counted against them and no longer
-    // counted against the tournament.
+    // counted against the tournament. A trusted device mistyping while the
+    // tournament is already locked adds nothing either: the lock is not
+    // stretched, and the device is told its PIN was wrong, not that it tripped
+    // a lock that was already there.
     const contributed = spent?.contributed ?? 0;
-    const contributes = contributed < SOURCE_QUOTA;
+    const contributes = contributed < SOURCE_QUOTA && tournamentLockedFor <= 0;
     const attempt = {
       tournamentId,
       sourceHash,
@@ -267,6 +334,7 @@ export async function attemptSignIn(
       contributed: contributed + (contributes ? 1 : 0),
       lockedUntil: sourceLocked ? now + SOURCE_LOCKOUT_MS : undefined,
       trustedUntil: record?.trustedUntil,
+      trustedRole: record?.trustedRole,
       updatedAt: now,
     };
     if (record) await ctx.db.patch(record._id, attempt);
@@ -275,7 +343,7 @@ export async function attemptSignIn(
     const failed =
       tournamentFailures(tournament.failedPinAttempts, tournament.pinLockedUntil, now) +
       (contributes ? 1 : 0);
-    const locked = failed >= MAX_ATTEMPTS;
+    const locked = contributes && failed >= MAX_ATTEMPTS;
     if (contributes) {
       await ctx.db.patch(tournamentId, {
         failedPinAttempts: failed,
@@ -297,6 +365,7 @@ export async function attemptSignIn(
     };
   }
 
+  const { role, rehash } = matched;
   if (id !== null) {
     const remembered = {
       tournamentId,
@@ -305,6 +374,7 @@ export async function attemptSignIn(
       contributed: 0,
       lockedUntil: undefined,
       trustedUntil: now + TRUST_MS,
+      trustedRole: nextTrustedRole(trustedRole, role),
       updatedAt: now,
     };
     if (record) await ctx.db.patch(record._id, remembered);
@@ -312,17 +382,44 @@ export async function attemptSignIn(
   } else if (record) {
     await ctx.db.delete(record._id);
   }
-  if (tournament.failedPinAttempts || tournament.pinLockedUntil) {
-    await ctx.db.patch(tournamentId, { failedPinAttempts: 0, pinLockedUntil: undefined });
-  }
+
+  // A hash in an old format is replaced the first time its PIN is typed, which
+  // is the only moment the PIN is in hand. The token MAC covers the hash, so
+  // this signs out other devices on that role once — the same thing rotating
+  // the deployment secret already did.
+  const changes = {
+    ...(rehash === null ? {} : role === "organiser" ? { pinHash: rehash } : { refereePinHash: rehash }),
+    ...(tournament.failedPinAttempts || tournament.pinLockedUntil
+      ? { failedPinAttempts: 0, pinLockedUntil: undefined }
+      : {}),
+  };
+  if (Object.keys(changes).length > 0) await ctx.db.patch(tournamentId, changes);
 
   const expiresAt = now + SESSION_MS;
   return {
     ok: true,
-    token: await mintToken(tournament, matched, expiresAt),
-    role: matched,
+    token: await mintToken({ ...tournament, ...changes }, role, expiresAt),
+    role,
     expiresAt,
   };
+}
+
+/**
+ * The first of `allow` whose PIN this is, and a fresh hash to store when the
+ * one on file is in an outdated format — or null when it matches neither.
+ */
+async function matchPin(
+  tournament: Doc<"tournaments">,
+  pin: string,
+  allow: readonly AccessRole[],
+): Promise<{ role: AccessRole; rehash: string | null } | null> {
+  for (const role of ["organiser", "referee"] as const) {
+    const stored = hashForRole(tournament, role);
+    if (!allow.includes(role) || stored === null) continue;
+    const { ok, stale } = await verifyPin(pin, tournament.pinSalt, stored);
+    if (ok) return { role, rehash: stale ? await derivePinHash(pin, tournament.pinSalt) : null };
+  }
+  return null;
 }
 
 /** Mint a token for someone who has just proved themselves another way. */

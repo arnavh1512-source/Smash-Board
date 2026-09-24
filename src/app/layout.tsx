@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Script from "next/script";
 import { Archivo } from "next/font/google";
 import "./globals.css";
 import { ConvexClientProvider } from "./ConvexClientProvider";
@@ -84,9 +85,14 @@ const faqJsonLd = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${archivo.variable} h-full antialiased`}>
+    // The theme script adds its class to <html> before React hydrates.
+    <html lang="en" className={`${archivo.variable} h-full antialiased`} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        {/* next/script, not a raw <script>: when Next renders the root layout on the
+            client (a not-found page, say) React warns about raw script tags. */}
+        <Script id="theme-init" strategy="beforeInteractive">
+          {THEME_INIT_SCRIPT}
+        </Script>
       </head>
       <body className="flex min-h-full flex-col">
         <script
@@ -100,22 +106,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               {SITE.name}
             </Link>
             <ThemeToggle />
-            <Link href="/#create" className="whitespace-nowrap">
+            <Link href="/#create" className="inline-flex min-h-[44px] items-center whitespace-nowrap">
               New tournament
             </Link>
           </header>
 
           <main className="flex-1">{children}</main>
 
-          <footer className="rule-t2 flex items-center justify-between gap-3 px-4 py-3.5">
-            <span className="text-[11px] opacity-60">
+          {/* pr-20 keeps the footer link clear of the floating WhatsApp button. */}
+          <footer className="rule-t2 flex items-center justify-between gap-3 py-3.5 pl-4 pr-20">
+            <span className="text-[11px] text-muted">
               {SITE.name} · {SITE.locale.replace("_", "-")}
             </span>
             <a
               href={whatsappLink(`Hi, I need help running a tournament on ${SITE.name}.`)}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[12px]"
+              className="inline-flex min-h-[44px] items-center text-[12px]"
             >
               Questions? WhatsApp us
             </a>

@@ -1,18 +1,31 @@
 "use client";
 
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
-import { cx } from "@/components/ui";
+import { Badge, cx } from "@/components/ui";
 import { STATUS_LABELS } from "@/lib/display";
+import { isBye } from "@/lib/results";
 import { clockOf } from "@/lib/schedule";
 import { SideNames } from "./PlayerPick";
 
 export type EntryLookup = Map<Id<"entries">, Doc<"entries">>;
 
-/** The status word sits where the design puts it: same size as the label, coloured only when live. */
-function statusClass(status: string): string {
-  if (status === "live") return "text-[var(--color-accent-ink)]";
-  if (status === "walkover") return "text-[var(--color-accent-ink)] opacity-80";
-  return "opacity-50";
+/**
+ * The status in the row header. Waiting states (scheduled, bye) stay plain
+ * grey text; a match that is over gets a chip so a result, a walkover and a
+ * match that never happened can be told apart at a glance.
+ */
+function StatusMark({ match }: { match: Doc<"matches"> }) {
+  // A bye is not news, so it reads like a scheduled match, not a withdrawal.
+  if (isBye(match)) return <span className="shrink-0 text-muted">Bye</span>;
+  const label = STATUS_LABELS[match.status] ?? match.status;
+  if (match.status === "live") {
+    return <span className="shrink-0 text-[var(--color-accent-ink)]">{label}</span>;
+  }
+  if (match.status === "walkover") return <Badge tone="outline">{label}</Badge>;
+  if (match.status === "completed" || match.status === "cancelled") {
+    return <Badge tone="neutral">{label}</Badge>;
+  }
+  return <span className="shrink-0 text-muted">{label}</span>;
 }
 
 function Side({
@@ -32,8 +45,8 @@ function Side({
 }) {
   return (
     <div className="flex items-baseline justify-between gap-3 text-[15px] leading-[1.3]">
-      <span className={cx("truncate", isWinner ? "font-extrabold" : "opacity-70")}>
-        {seed ? <span className="mr-1 text-[11px] opacity-50">[{seed}]</span> : null}
+      <span className={cx("min-w-0 break-words", isWinner ? "font-extrabold" : "text-muted")}>
+        {seed ? <span className="mr-1 text-[11px] text-muted">[{seed}]</span> : null}
         <SideNames entry={entry} label={label} />
       </span>
       <span className="num shrink-0 space-x-1.5">
@@ -41,7 +54,7 @@ function Side({
           <span
             key={index}
             className={
-              (side === "a" ? set.a > set.b : set.b > set.a) ? "font-extrabold" : "opacity-55"
+              (side === "a" ? set.a > set.b : set.b > set.a) ? "font-extrabold" : "text-muted"
             }
           >
             {side === "a" ? set.a : set.b}
@@ -69,14 +82,12 @@ export function MatchRow({
   return (
     <article className="rule-b flex flex-col gap-[7px] px-4 py-3">
       <header className="flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.08em]">
-        <span className="truncate opacity-50">
+        <span className="truncate text-muted">
           {title ?? ""}
           {match.court ? ` · ${match.court}` : ""}
           {match.scheduledAt ? ` · ${clockOf(match.scheduledAt)}` : ""}
         </span>
-        <span className={cx("shrink-0", statusClass(match.status))}>
-          {STATUS_LABELS[match.status] ?? match.status}
-        </span>
+        <StatusMark match={match} />
       </header>
 
       <Side

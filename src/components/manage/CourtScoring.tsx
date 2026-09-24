@@ -43,7 +43,7 @@ export function CourtScoring({
       action={
         <Button
           variant={primary ? "primary" : "secondary"}
-          className="min-h-10 text-[12px]"
+          className="text-[12px]"
           onClick={() => onScore(match)}
         >
           {label}
@@ -54,7 +54,7 @@ export function CourtScoring({
 
   return (
     <div>
-      <div className="rule-b flex overflow-x-auto" role="group" aria-label="Courts">
+      <div className="rule-b scroll-hint flex overflow-x-auto" role="group" aria-label="Courts">
         {courts.map((option) => {
           const left = courtQueue(matches, option);
           const remaining = left.upNext.length + (left.now ? 1 : 0);
@@ -68,11 +68,11 @@ export function CourtScoring({
                 "btn min-h-11 shrink-0 gap-1.5 whitespace-nowrap border-0 border-b-2 px-3.5 text-[12px]",
                 option === court
                   ? "border-b-[var(--color-accent)] font-extrabold"
-                  : "border-b-transparent opacity-55",
+                  : "border-b-transparent text-muted hover:border-b-[var(--color-divider)]",
               )}
             >
               {option}
-              <span className="num text-[10px] opacity-60" aria-label={`${remaining} to play`}>
+              <span className="num text-[10px] text-muted" aria-label={`${remaining} to play`}>
                 {remaining}
               </span>
             </button>

@@ -59,7 +59,7 @@ function ScoreViewToggle({
         <Button
           key={option.label}
           variant={option.on === byCourt ? "primary" : "ghost"}
-          className="min-h-10 flex-1 text-[12px]"
+          className="flex-1 text-[12px]"
           aria-pressed={option.on === byCourt}
           onClick={() => onByCourt(option.on)}
         >
@@ -82,7 +82,7 @@ function EventTabs({
 }) {
   if (events.length < 2) return null;
   return (
-    <div className="rule-b flex overflow-x-auto">
+    <div className="rule-b scroll-hint flex overflow-x-auto">
       {events.map((event) => (
         <button
           key={event._id}
@@ -93,7 +93,7 @@ function EventTabs({
             "btn min-h-11 shrink-0 whitespace-nowrap border-0 border-b-2 px-3.5 text-[12px]",
             event._id === activeId
               ? "border-b-[var(--color-accent)] font-extrabold"
-              : "border-b-transparent opacity-55",
+              : "border-b-transparent text-muted hover:border-b-[var(--color-divider)]",
           )}
         >
           {event.name}
@@ -132,17 +132,17 @@ function CategoryList({
           <li key={event._id} className="rule-b flex items-center gap-3 px-4 py-3">
             <div className="min-w-0 flex-1">
               <p className="m-0 truncate text-[14px] font-extrabold leading-tight">{event.name}</p>
-              <p className="m-0 truncate text-[11px] opacity-55">
+              <p className="m-0 truncate text-[11px] text-muted">
                 {event.teamSize === 2 ? "Doubles" : "Singles"} ·{" "}
                 {scoringSummary(event.scoring as ScoringConfig)}
               </p>
             </div>
-            <Button variant="ghost" className="min-h-10" onClick={() => onEdit(event)}>
+            <Button variant="ghost" onClick={() => onEdit(event)}>
               Edit
             </Button>
             <Button
               variant="ghost"
-              className="min-h-10 opacity-70"
+              className="text-muted"
               onClick={async () => {
                 if (!window.confirm(`Delete ${event.name} with all its entrants and scores?`)) return;
                 setError(null);
@@ -212,7 +212,7 @@ export function ManageConsole({
     return (
       <div className="px-4 py-10">
         <h3 className="m-0">Tournament not found</h3>
-        <p className="mt-2 text-[13px] opacity-70">
+        <p className="mt-2 text-[13px] text-muted">
           The link may be wrong, or the tournament has been deleted.
         </p>
         <Link href="/">Back to all tournaments</Link>
@@ -263,12 +263,12 @@ export function ManageConsole({
             <p className="m-0 text-[11px] uppercase tracking-[0.08em] text-[var(--color-accent-ink)]">
               {referee ? "Referee console" : "Organiser console"}
             </p>
-            <h2 className="m-0 mt-1 text-[26px]">{tournament.name}</h2>
+            <h2 className="m-0 mt-1 break-words text-[26px]">{tournament.name}</h2>
             <Link href={`/t/${tournament.slug}`} className="text-[12px]">
               View the public scoreboard
             </Link>
           </div>
-          <Button variant="ghost" className="min-h-10 text-[12px]" onClick={() => setToken(null)}>
+          <Button variant="ghost" className="text-[12px]" onClick={() => setToken(null)}>
             Lock
           </Button>
         </div>
@@ -287,7 +287,7 @@ export function ManageConsole({
                 "btn min-h-12 flex-1 justify-center border-0 border-b-2 px-1 text-[12px]",
                 tab === option.id
                   ? "border-b-[var(--color-accent)] font-extrabold"
-                  : "border-b-transparent opacity-55",
+                  : "border-b-transparent text-muted hover:border-b-[var(--color-divider)]",
               )}
             >
               {option.label}
@@ -357,7 +357,7 @@ export function ManageConsole({
                 match.aId && match.bId ? (
                   <Button
                     variant="secondary"
-                    className="min-h-10 text-[12px]"
+                    className="text-[12px]"
                     onClick={() => setScoringMatch(match)}
                   >
                     {match.status === "completed" || match.status === "walkover"

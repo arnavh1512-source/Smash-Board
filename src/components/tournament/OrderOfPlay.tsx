@@ -38,7 +38,7 @@ function rowsOf(matches: readonly Doc<"matches">[]): Row[] {
 
 function BreakRow({ minutes }: { minutes: number }) {
   return (
-    <li className="rule-b flex items-center gap-2 bg-[var(--color-surface)] px-4 py-2 text-[11px] uppercase tracking-[0.08em] opacity-60">
+    <li className="rule-b flex items-center gap-2 bg-[var(--color-surface)] px-4 py-2 text-[11px] uppercase tracking-[0.08em] text-muted">
       Break · {formatDuration(minutes)}
     </li>
   );
@@ -65,15 +65,20 @@ function MatchLine({
         {clockOf(scheduledAt)}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="m-0 flex items-center gap-1.5 text-[11px] uppercase tracking-[0.08em] opacity-55">
+        <p className="m-0 flex items-center gap-1.5 text-[11px] uppercase tracking-[0.08em] text-muted">
           {live ? <LiveDot size={6} /> : null}
-          <span className="truncate">{eventName}</span>
+          <span className="min-w-0 break-words">{eventName}</span>
           {match.court ? <span className="shrink-0">· {match.court}</span> : null}
         </p>
-        <p className="m-0 truncate text-[14px] leading-tight">
-          <SideNames entry={a} label={match.aLabel} /> <span className="opacity-45">v</span>{" "}
+        <p className="m-0 break-words text-[14px] leading-tight">
+          <SideNames entry={a} label={match.aLabel} /> <span className="text-muted">v</span>{" "}
           <SideNames entry={b} label={match.bLabel} />
         </p>
+        {match.sets.length > 0 ? (
+          <p className="num m-0 mt-1 text-[13px] text-muted">
+            {match.sets.map((set) => `${set.a}–${set.b}`).join(", ")}
+          </p>
+        ) : null}
       </div>
       <span className="shrink-0">
         <Badge tone={live ? "accent" : "neutral"}>
@@ -121,7 +126,7 @@ export function OrderOfPlay({
         let latestEnd = dayRows[0].startMinute;
         return (
           <section key={day}>
-            <header className="rule-t2 rule-b sticky top-0 z-10 bg-[var(--color-surface)] px-4 py-2.5">
+            <header className="rule-t2 rule-b sticky top-[var(--nav-h)] z-10 bg-[var(--color-surface)] px-4 py-2.5">
               <h6 className="m-0">{dayOf(dayRows[0].scheduledAt)}</h6>
             </header>
             <ul className="m-0 list-none p-0">

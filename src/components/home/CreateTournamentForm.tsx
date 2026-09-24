@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Alert, Button, Checkbox, Field, Input, Textarea } from "@/components/ui";
+import { clientId } from "@/lib/clientId";
 import { errorMessage, sessionKey } from "@/lib/useSession";
 
 /** A section heading in the form: an accent numeral and a title, as the design sets them. */
@@ -57,6 +58,7 @@ export function CreateTournamentForm() {
         showOrganiserContact,
         pin,
         isPublic,
+        client: clientId(),
       });
       try {
         // `create` signs the organiser in, so the console opens straight away.
@@ -74,7 +76,7 @@ export function CreateTournamentForm() {
   return (
     <section className="rule-b2 bg-[var(--color-surface)] px-4 py-5">
       <h4 className="m-0">Create a tournament</h4>
-      <p className="mb-4 mt-1.5 text-[13px] opacity-75">
+      <p className="mb-4 mt-1.5 text-[13px] text-muted">
         Takes under a minute. The PIN is the only thing that lets you edit it later, so keep it safe.
       </p>
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -143,6 +144,90 @@ export function Badge({
 /** The pulsing square the design uses wherever something is happening now. */
 export function LiveDot({ size = 8 }: { size?: number }) {
   return <span className="live-dot" style={{ width: size, height: size }} aria-hidden="true" />;
+}
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
+
+/**
+ * A modal panel: a bottom sheet on phones, a centred box from `sm` up.
+ *
+ * It owns what every modal owes a keyboard and screen-reader user: Escape
+ * closes it, focus moves inside on open and cannot Tab out behind the
+ * backdrop, the page underneath stops scrolling, and focus goes back to
+ * whatever opened it on close.
+ */
+export function Sheet({
+  label,
+  onClose,
+  closeOnBackdrop = false,
+  children,
+}: {
+  label: string;
+  onClose: () => void;
+  /** Off where a stray tap on the backdrop would throw away typed work. */
+  closeOnBackdrop?: boolean;
+  children: ReactNode;
+}) {
+  const panel = useRef<HTMLDivElement>(null);
+  // Callers pass inline arrows; a ref keeps the effect from re-running each render.
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const node = panel.current;
+    if (node && !node.contains(document.activeElement)) node.focus();
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        close.current();
+        return;
+      }
+      if (event.key !== "Tab" || !node) return;
+      const items = [...node.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === node)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+      opener?.focus();
+    };
+  }, []);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-[color-mix(in_srgb,#201e1d_55%,transparent)] sm:items-center sm:p-4"
+      onClick={(event) => {
+        if (closeOnBackdrop && event.target === event.currentTarget) close.current();
+      }}
+    >
+      <div
+        ref={panel}
+        tabIndex={-1}
+        className="max-h-[92dvh] w-full max-w-lg overflow-y-auto overscroll-contain border border-[var(--color-divider)] bg-[var(--color-bg)] pb-[max(1rem,env(safe-area-inset-bottom))] outline-none"
+      >
+        {children}
+      </div>
+    </div>
+  );
 }
 
 export function Spinner({ label = "Loading" }: { label?: string }) {

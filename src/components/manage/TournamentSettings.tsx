@@ -205,7 +205,7 @@ function PinForm({
   return (
     <Section>
       <h6 className="m-0">Organiser PIN</h6>
-      <p className="m-0 text-[13px] opacity-70">
+      <p className="m-0 text-[13px] text-muted">
         Anyone with this PIN can change the draw and the scores. Share it only with the people
         running the desk.
       </p>
@@ -307,7 +307,7 @@ function RefereePinForm({
   return (
     <Section>
       <h6 className="m-0">Referee PIN</h6>
-      <p className="m-0 text-[13px] opacity-70">
+      <p className="m-0 text-[13px] text-muted">
         Umpires with this PIN can enter scores and nothing else — they cannot touch the draw, the
         entrants or the settings. It must be different from your organiser PIN.
       </p>
@@ -320,7 +320,7 @@ function RefereePinForm({
             path={`/t/${tournament.slug}/score`}
             compact
           />
-          <p className="m-0 text-[12px] opacity-70">
+          <p className="m-0 text-[12px] text-muted">
             Umpire sitting at one court? Add the court to the link, like{" "}
             <code>?court=Court%201</code>, and it opens on that court&apos;s matches.
           </p>
@@ -393,7 +393,7 @@ function DangerZone({
   return (
     <Section className="border-b-0">
       <h6 className="m-0 text-[var(--color-accent-ink)]">Danger</h6>
-      <p className="m-0 text-[13px] opacity-70">
+      <p className="m-0 text-[13px] text-muted">
         Deleting removes every category, entrant, match and score. It cannot be undone. Type the
         tournament name to confirm.
       </p>

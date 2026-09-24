@@ -54,9 +54,9 @@ export function PinGate({
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-4 px-4 py-6">
-      <h6 className="m-0 opacity-55">{tournamentName}</h6>
+      <h6 className="m-0 text-muted">{tournamentName}</h6>
       <h3 className="m-0">{referee ? "Referee sign-in" : "Organiser sign-in"}</h3>
-      <p className="m-0 text-[13px] opacity-75">
+      <p className="m-0 text-[13px] text-muted">
         {referee
           ? "Enter the referee PIN the organiser gave you. It lets you enter scores and nothing else."
           : "The PIN unlocks the console for this device only."}{" "}

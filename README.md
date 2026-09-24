@@ -98,7 +98,10 @@ has not happened yet and throwing away something that has.
 A tournament is guarded by a PIN chosen when it is created. An organiser may also set a second,
 optional referee PIN that unlocks score entry and nothing else, so an umpire can be handed a phone
 without also being handed the power to redraw the event or delete it. Neither PIN is stored: only a
-SHA-256 hash of `salt + pin` is kept, and the salt is generated per tournament.
+PBKDF2-SHA-256 hash (100,000 iterations) over a per-tournament salt is kept, so a leaked database
+does not hand over a four-digit PIN in a millisecond. Tournaments made before that change carry a
+single SHA-256 hash, which is replaced with the PBKDF2 one the next time its PIN is typed — the only
+moment the PIN is in hand. That re-hash signs out other devices on that role once.
 
 A PIN is accepted at exactly one endpoint, `tournaments.signIn`, which trades it for a short-lived
 signed session token. Every other mutation takes the token and never sees the PIN. That is not
@@ -121,8 +124,15 @@ Wrong guesses are throttled in two layers:
   own scores.
 - **Trusted devices.** Rotating ids is how a crowd is faked, so a lock alone would still let one
   person shut the organiser out. A device that has signed in with a real PIN is trusted for thirty
-  days and signs in straight through a tournament lock, still held to its own five-guess limit, and
-  its wrong guesses still count. The shared no-id bucket is never trusted.
+  days and signs in straight through a tournament lock — for the PIN it proved, and only that one.
+  An umpire's phone that was handed the referee PIN can keep scoring through a lock, but cannot use
+  it to keep guessing at the organiser PIN; an organiser's phone gets through for both. A trusted
+  device is still held to its own five-guess limit, and a wrong guess from it during a lock neither
+  stretches the lock nor is reported as tripping it. The shared no-id bucket is never trusted.
+
+  So **sign each umpire's phone in once before match day** (open the referee link, type the referee
+  PIN). A phone that signs in for the first time while a crowd has the tournament locked has to
+  wait the ten minutes out like everyone else.
 
 A lockout that runs out clears itself (the tournament's count starts again from zero, so one typo
 afterwards cannot re-lock it), and so does a long enough quiet spell, so a mistyped PIN
@@ -168,6 +178,13 @@ npm run dev
 NEXT_PUBLIC_CONVEX_URL=https://<your-deployment>.convex.cloud
 ```
 
+The Convex deployment itself needs one environment variable, the server-side half of the key that
+signs session tokens. Without it, creating a tournament and signing in both fail:
+
+```bash
+npx convex env set SMASHBOARD_TOKEN_SECRET "$(openssl rand -hex 32)"
+```
+
 ## Tests
 
 Three layers, each with its own command. The unit suites cover the pure engines — no database
@@ -198,6 +215,12 @@ The end-to-end suites need the browsers installed once:
 ```bash
 npx playwright install
 ```
+
+In CI the end-to-end job runs on pushes and same-repository pull requests when the repository has a
+`NEXT_PUBLIC_CONVEX_URL` secret pointing at a **development** deployment. Add that deployment's deploy
+key as `E2E_CONVEX_DEPLOY_KEY` too, and the job pushes the checkout's functions and schema there
+before the browser tests start; without it the job warns that it is testing whatever backend the
+deployment already has. The deployment needs its own `SMASHBOARD_TOKEN_SECRET`.
 
 | Suite | Covers |
 | --- | --- |
@@ -246,6 +269,15 @@ That needs one secret. In the Convex dashboard, under Settings → Deploy Keys, 
 **production deploy key**, then add it to the Vercel project as `CONVEX_DEPLOY_KEY` for the
 Production environment. `convex deploy` sets `NEXT_PUBLIC_CONVEX_URL` for the build itself, so it
 does not need to be configured separately in production.
+
+Set `SMASHBOARD_TOKEN_SECRET` on the production deployment **before** the first release that needs
+it, with its own value, not the development one:
+
+```bash
+npx convex env set --prod SMASHBOARD_TOKEN_SECRET "$(openssl rand -hex 32)"
+```
+
+Setting or rotating it signs every organiser and referee out, so do it outside event hours.
 
 Preview deployments need their own `NEXT_PUBLIC_SITE_URL`; without it, share links in a preview
 point at production.

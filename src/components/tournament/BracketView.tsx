@@ -22,7 +22,7 @@ function Round({
     <div>
       <header className="rule-t2 rule-b flex items-baseline justify-between gap-3 bg-[var(--color-surface)] px-4 py-2.5">
         <h6 className="m-0">{title}</h6>
-        <span className="text-[11px] opacity-55">{meta}</span>
+        <span className="text-[11px] text-muted">{meta}</span>
       </header>
       {matches.map((match) => (
         <MatchRow

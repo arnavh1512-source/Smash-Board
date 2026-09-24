@@ -253,12 +253,12 @@ function EntryRow({
     <li
       className={cx(
         "rule-b flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3",
-        entry.withdrawn && "opacity-55",
+        entry.withdrawn && "text-muted",
       )}
     >
       <div className="min-w-0 flex-1">
         <p className="m-0 truncate text-[14px] font-extrabold leading-tight">
-          {entry.seed > 0 ? <span className="mr-1 text-[11px] opacity-50">[{entry.seed}]</span> : null}
+          {entry.seed > 0 ? <span className="mr-1 text-[11px] text-muted">[{entry.seed}]</span> : null}
           {entryName(entry)}
           {teamSize === 2 && !entry.playerTwo ? (
             <span className="ml-2">
@@ -271,11 +271,11 @@ function EntryRow({
             </span>
           ) : null}
         </p>
-        {entry.club ? <p className="m-0 truncate text-[11px] opacity-55">{entry.club}</p> : null}
+        {entry.club ? <p className="m-0 truncate text-[11px] text-muted">{entry.club}</p> : null}
       </div>
 
       <label
-        className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.08em] opacity-70"
+        className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.08em] text-muted"
         title={
           drawExists
             ? "The draw has already been made, so seeds are fixed. Clear the draw to reseed."
@@ -289,7 +289,7 @@ function EntryRow({
           max={64}
           disabled={drawExists}
           defaultValue={entry.seed}
-          className="w-16 min-h-10 px-2 py-1"
+          className="w-16 px-2 py-1"
           onBlur={(e) => {
             const seed = Number(e.target.value);
             if (seed !== entry.seed) void run(() => update({ entryId: entry._id, token, seed }));
@@ -299,7 +299,6 @@ function EntryRow({
 
       <Button
         variant="ghost"
-        className="min-h-10"
         onClick={async () => {
           await run(async () => {
             setPhone((await revealContact({ entryId: entry._id, token })) ?? "");
@@ -311,7 +310,6 @@ function EntryRow({
       </Button>
       <Button
         variant="ghost"
-        className="min-h-10"
         disabled={drawExists && entry.withdrawn}
         onClick={() => {
           if (
@@ -331,7 +329,7 @@ function EntryRow({
       {drawExists ? null : (
         <Button
           variant="ghost"
-          className="min-h-10 opacity-70"
+          className="text-muted"
           onClick={() => {
             if (!window.confirm(`Remove ${entryName(entry)} from this category?`)) return;
             void run(() => remove({ entryId: entry._id, token }));
@@ -379,7 +377,7 @@ export function EntryManager({
       <Section>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h6 className="m-0">Entrants</h6>
-          <span className="num text-[11px] opacity-55">
+          <span className="num text-[11px] text-muted">
             {active} playing / {entries.length} listed
           </span>
         </div>
@@ -395,7 +393,7 @@ export function EntryManager({
                 "btn min-h-11 flex-1 justify-center border-0 border-b-2 text-[12px]",
                 mode === option
                   ? "border-b-[var(--color-accent)] font-extrabold"
-                  : "border-b-[var(--color-divider)] opacity-55",
+                  : "border-b-[var(--color-divider)] text-muted",
               )}
             >
               {option === "form"

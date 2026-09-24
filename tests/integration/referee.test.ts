@@ -17,6 +17,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { api } from "../../convex/_generated/api";
+import { createSource } from "./source";
 import type { Id } from "../../convex/_generated/dataModel";
 import { DEFAULT_SCORING } from "../../src/lib/scoring";
 
@@ -77,6 +78,7 @@ async function tokenFor(
 
 async function makeTournament(name: string) {
   return await client.mutation(api.tournaments.create, {
+    client: createSource(),
     name: `${name} ${Date.now()}`,
     venue: "Ahmedabad",
     organiserName: "Test Organiser",

@@ -8,11 +8,14 @@
  * @module
  */
 
+import type * as cleanup from "../cleanup.js";
+import type * as crons from "../crons.js";
 import type * as draws from "../draws.js";
 import type * as entries from "../entries.js";
 import type * as events from "../events.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_progression from "../lib/progression.js";
+import type * as lib_secret from "../lib/secret.js";
 import type * as matches from "../matches.js";
 import type * as schedule from "../schedule.js";
 import type * as tournaments from "../tournaments.js";
@@ -24,11 +27,14 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  cleanup: typeof cleanup;
+  crons: typeof crons;
   draws: typeof draws;
   entries: typeof entries;
   events: typeof events;
   "lib/auth": typeof lib_auth;
   "lib/progression": typeof lib_progression;
+  "lib/secret": typeof lib_secret;
   matches: typeof matches;
   schedule: typeof schedule;
   tournaments: typeof tournaments;

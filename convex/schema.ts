@@ -205,8 +205,37 @@ export default defineSchema({
      * tournament-wide lock, because it has already got a PIN right.
      */
     trustedUntil: v.optional(v.number()),
+    /**
+     * The PIN that earned the trust. A device trusted as referee may only try
+     * the referee PIN through a lock; rows from before this field read as referee.
+     */
+    trustedRole: v.optional(v.union(v.literal("organiser"), v.literal("referee"))),
     updatedAt: v.number(),
   })
     .index("by_source", ["tournamentId", "sourceHash"])
-    .index("by_tournament", ["tournamentId"]),
+    .index("by_tournament", ["tournamentId"])
+    .index("by_updatedAt", ["updatedAt"]),
+
+  /**
+   * Tournaments created per source, so the one unauthenticated mutation in the
+   * app cannot be used as a free write endpoint.
+   *
+   * `tournaments.create` is the only door with no PIN in front of it, because
+   * it is where a PIN comes from. Without a counter a script could fill the
+   * database and bury every real tournament under noise on the home page.
+   *
+   * The source is self-declared, exactly as in `pinAttempts`, so this is a
+   * speed bump rather than an authority. It is set well above what any real
+   * club does, so an honest organiser will never see it.
+   */
+  createAttempts: defineTable({
+    /** SHA-256 of a fixed pepper and the caller's id. Never the id. */
+    sourceHash: v.string(),
+    /** Creations inside the current window. */
+    count: v.number(),
+    /** Epoch millis the current window opened. */
+    windowStart: v.number(),
+  })
+    .index("by_source", ["sourceHash"])
+    .index("by_windowStart", ["windowStart"]),
 });

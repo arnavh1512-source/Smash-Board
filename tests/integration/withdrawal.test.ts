@@ -1,6 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { api } from "../../convex/_generated/api";
+import { createSource } from "./source";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { DEFAULT_SCORING } from "../../src/lib/scoring";
 
@@ -58,6 +59,7 @@ const settled = (match: Doc<"matches">) =>
 
 beforeAll(async () => {
   const created = await client.mutation(api.tournaments.create, {
+    client: createSource(),
     name: `Withdrawal Run ${Date.now()}`,
     venue: "Ahmedabad",
     startDate: "2026-11-14",
@@ -202,6 +204,7 @@ describe("a group withdrawal from every finishing position", () => {
    */
   async function runQualificationPositionCase(quitterIndex: number, beatsCount: number) {
     const created = await client.mutation(api.tournaments.create, {
+      client: createSource(),
       name: `Qualification Position ${quitterIndex} ${Date.now()}`,
       venue: "Ahmedabad",
       startDate: "2026-11-14",

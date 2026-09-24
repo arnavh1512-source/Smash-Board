@@ -10,6 +10,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { api } from "../../convex/_generated/api";
+import { createSource } from "./source";
 import type { Id } from "../../convex/_generated/dataModel";
 import { DEFAULT_SCORING } from "../../src/lib/scoring";
 
@@ -54,6 +55,7 @@ async function rejects(call: Promise<unknown>): Promise<string> {
 
 beforeAll(async () => {
   const created = await client.mutation(api.tournaments.create, {
+    client: createSource(),
     name: `Integration Run ${Date.now()}`,
     venue: "Ahmedabad",
     organiserName: "Test Organiser",
@@ -116,6 +118,7 @@ describe("tournament creation", () => {
   it("refuses an end date before the start date on create", async () => {
     const message = await rejects(
       client.mutation(api.tournaments.create, {
+        client: createSource(),
         name: `Backwards Range ${Date.now()}`,
         startDate: "2026-09-20",
         endDate: "2026-09-18",
@@ -129,6 +132,7 @@ describe("tournament creation", () => {
   it("refuses a malformed date on create", async () => {
     const message = await rejects(
       client.mutation(api.tournaments.create, {
+        client: createSource(),
         name: `Bad Date ${Date.now()}`,
         startDate: "20 Sep 2026",
         pin: PIN,
@@ -538,6 +542,7 @@ describe("tournament dates must exist on the calendar", () => {
     async (startDate) => {
       const message = await rejects(
         client.mutation(api.tournaments.create, {
+          client: createSource(),
           name: `Impossible Date ${Date.now()}`,
           venue: "Ahmedabad",
           organiserName: "Test Organiser",

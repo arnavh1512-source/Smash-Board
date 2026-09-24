@@ -1,20 +1,68 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { scheduleValidator } from "./schema";
-import type { Id } from "./_generated/dataModel";
 import { randomBelow } from "../src/lib/random";
+import { sourceId, sourceKey } from "../src/lib/pinThrottle";
+import {
+  GLOBAL_CREATE_KEY,
+  GLOBAL_CREATE_LIMIT,
+  createLimitFor,
+  createLimitMessage,
+  globalCreateLimitMessage,
+  readCreateSource,
+} from "../src/lib/createThrottle";
 import {
   assertPinShape,
   attemptSignIn,
-  hashPin,
+  derivePinHash,
+  digest,
   issueToken,
   newSalt,
   publicTournament,
   requireOrganiser,
+  verifyPin,
   type AccessRole,
 } from "./lib/auth";
 
 const MAX_NAME = 120;
+
+/**
+ * Fixed salt for the create-throttle's source hashes.
+ *
+ * `pinAttempts` salts its hashes with the tournament's own salt, which a
+ * creation does not have yet — there is no tournament. A constant does the one
+ * job that matters here: the browser's random id is never written down, only a
+ * hash of it, so the table cannot be read back as a list of devices.
+ */
+export const CREATE_PEPPER = "smashboard.create.v1";
+
+/**
+ * Record one creation against the bucket counted under `key`, or throw the
+ * bucket's message when it is full.
+ */
+async function countCreation(
+  ctx: MutationCtx,
+  key: string,
+  now: number,
+  limit: number,
+  message: (retryAfter: number) => string,
+): Promise<void> {
+  const sourceHash = await digest(key, CREATE_PEPPER);
+  const record = await ctx.db
+    .query("createAttempts")
+    .withIndex("by_source", (q) => q.eq("sourceHash", sourceHash))
+    .unique();
+  const standing = readCreateSource(
+    record === null ? null : { count: record.count, windowStart: record.windowStart },
+    now,
+    limit,
+  );
+  if (!standing.allowed) throw new ConvexError(message(standing.retryAfter));
+  const row = { count: standing.count, windowStart: standing.windowStart };
+  if (record === null) await ctx.db.insert("createAttempts", { sourceHash, ...row });
+  else await ctx.db.patch(record._id, row);
+}
 
 /** Shape returned to browsers: every column except the PIN material. */
 const publicTournamentValidator = v.object({
@@ -113,6 +161,8 @@ export const create = mutation({
     showOrganiserContact: v.optional(v.boolean()),
     pin: v.string(),
     isPublic: v.boolean(),
+    /** The browser's own random id, used only to rate-limit this door. */
+    client: v.optional(v.string()),
   },
   returns: v.object({
     tournamentId: v.id("tournaments"),
@@ -151,6 +201,18 @@ export const create = mutation({
 
     const salt = newSalt();
     const now = Date.now();
+
+    // The only mutation with no PIN in front of it, so it gets a counter
+    // instead. Applied here rather than at the top of the handler because a
+    // mutation is a transaction: anything written before a validation throw is
+    // rolled back anyway, so counting earlier would count nothing.
+    const id = sourceId(args.client);
+    await countCreation(ctx, sourceKey(id), now, createLimitFor(id), createLimitMessage);
+    // Checked second so a single source that is over its own limit does not
+    // spend the site-wide allowance for everybody else. A throw here rolls
+    // back the source's count too.
+    await countCreation(ctx, GLOBAL_CREATE_KEY, now, GLOBAL_CREATE_LIMIT, globalCreateLimitMessage);
+
     const tournamentId = await ctx.db.insert("tournaments", {
       name,
       slug,
@@ -161,7 +223,7 @@ export const create = mutation({
       organiserName: cleanText(args.organiserName, 120),
       organiserPhone: cleanText(args.organiserPhone, 32),
       showOrganiserContact: args.showOrganiserContact === true,
-      pinHash: await hashPin(args.pin, salt),
+      pinHash: await derivePinHash(args.pin, salt),
       pinSalt: salt,
       isPublic: args.isPublic,
       createdAt: now,
@@ -286,7 +348,7 @@ export const changePin = mutation({
     // stranded. The console tells the organiser to issue a new one.
     await ctx.db.patch(args.tournamentId, {
       pinSalt: salt,
-      pinHash: await hashPin(args.newPin, salt),
+      pinHash: await derivePinHash(args.newPin, salt),
       refereePinHash: undefined,
       failedPinAttempts: 0,
       pinLockedUntil: undefined,
@@ -362,11 +424,13 @@ export const setRefereePin = mutation({
     }
 
     assertPinShape(args.refereePin, "Referee PIN");
-    const hash = await hashPin(args.refereePin, tournament.pinSalt);
-    if (hash === tournament.pinHash) {
+    if ((await verifyPin(args.refereePin, tournament.pinSalt, tournament.pinHash)).ok) {
       throw new ConvexError("The referee PIN must be different from your organiser PIN.");
     }
-    await ctx.db.patch(args.tournamentId, { refereePinHash: hash, updatedAt: Date.now() });
+    await ctx.db.patch(args.tournamentId, {
+      refereePinHash: await derivePinHash(args.refereePin, tournament.pinSalt),
+      updatedAt: Date.now(),
+    });
     return null;
   },
 });
@@ -377,31 +441,56 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     await requireOrganiser(ctx, args.tournamentId, args.token);
 
-    const matches = await ctx.db
-      .query("matches")
-      .withIndex("by_tournament", (q) => q.eq("tournamentId", args.tournamentId))
-      .collect();
-    for (const match of matches) await ctx.db.delete(match._id);
-
-    const entries = await ctx.db
-      .query("entries")
-      .withIndex("by_tournament", (q) => q.eq("tournamentId", args.tournamentId))
-      .collect();
-    for (const entry of entries) await ctx.db.delete(entry._id);
-
-    const events = await ctx.db
-      .query("events")
-      .withIndex("by_tournament", (q) => q.eq("tournamentId", args.tournamentId as Id<"tournaments">))
-      .collect();
-    for (const event of events) await ctx.db.delete(event._id);
-
-    const attempts = await ctx.db
-      .query("pinAttempts")
-      .withIndex("by_tournament", (q) => q.eq("tournamentId", args.tournamentId))
-      .collect();
-    for (const attempt of attempts) await ctx.db.delete(attempt._id);
-
+    // The tournament row goes at once, so the link is dead the moment the
+    // organiser confirms. Its matches, entries, events and attempt records are
+    // swept up behind it in bounded batches: a busy weekend can leave more
+    // rows than one transaction is allowed to read, and a cascade that dies
+    // half-way through would leave the tournament standing.
     await ctx.db.delete(args.tournamentId);
+    await ctx.scheduler.runAfter(0, internal.tournaments.purge, {
+      tournamentId: args.tournamentId,
+    });
+    return null;
+  },
+});
+
+/** How many rows one sweep deletes before handing over to the next. */
+const PURGE_BATCH = 256;
+
+/**
+ * Deletes what belonged to a removed tournament, a batch at a time.
+ *
+ * Reschedules itself until nothing is left, so the work is bounded by the
+ * number of sweeps rather than by the size of the tournament. Internal: the
+ * permission check happened in `remove`, and by now there is no tournament
+ * left to check against.
+ */
+export const purge = internalMutation({
+  args: { tournamentId: v.id("tournaments") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    let budget = PURGE_BATCH;
+
+    const sweep = async (table: "matches" | "entries" | "events" | "pinAttempts") => {
+      if (budget <= 0) return;
+      const rows = await ctx.db
+        .query(table)
+        .withIndex("by_tournament", (q) => q.eq("tournamentId", args.tournamentId))
+        .take(budget);
+      for (const row of rows) await ctx.db.delete(row._id);
+      budget -= rows.length;
+    };
+
+    await sweep("matches");
+    await sweep("entries");
+    await sweep("events");
+    await sweep("pinAttempts");
+
+    if (budget <= 0) {
+      await ctx.scheduler.runAfter(0, internal.tournaments.purge, {
+        tournamentId: args.tournamentId,
+      });
+    }
     return null;
   },
 });

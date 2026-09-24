@@ -41,7 +41,7 @@ export function TournamentView({ slug }: { slug: string }) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16">
         <h3>Tournament not found</h3>
-        <p className="text-[13px] opacity-75">
+        <p className="text-[13px] text-muted">
           The link may be wrong, or the organiser may have deleted it.
         </p>
         <Link href="/" className="text-[13px]">
@@ -65,7 +65,7 @@ export function TournamentView({ slug }: { slug: string }) {
     <div className="mx-auto w-full max-w-3xl">
       <header className="rule-b2 flex flex-col gap-3 px-4 py-4">
         <div className="flex items-start justify-between gap-3">
-          <h2 className="m-0 text-[26px]">{tournament.name}</h2>
+          <h2 className="m-0 break-words text-[26px]">{tournament.name}</h2>
           <Link
             href={`/t/${tournament.slug}/manage`}
             className="shrink-0 whitespace-nowrap text-[12px]"
@@ -73,16 +73,16 @@ export function TournamentView({ slug }: { slug: string }) {
             Organiser sign-in
           </Link>
         </div>
-        {where ? <p className="m-0 text-[13px] opacity-75">{where}</p> : null}
+        {where ? <p className="m-0 text-[13px] text-muted">{where}</p> : null}
         {tournament.organiserName ? (
-          <p className="m-0 text-[13px] opacity-75">
+          <p className="m-0 text-[13px] text-muted">
             Organised by {tournament.organiserName}
             {tournament.organiserPhone ? ` · ${tournament.organiserPhone}` : ""}
           </p>
         ) : null}
         <ShareBar name={tournament.name} path={`/t/${tournament.slug}`} />
         {events.length > 0 ? (
-          <p className="m-0 text-[12px] opacity-60">
+          <p className="m-0 text-[12px] text-muted">
             Tap any player&apos;s name to see their matches, times and courts.
           </p>
         ) : null}
@@ -130,7 +130,7 @@ export function TournamentView({ slug }: { slug: string }) {
                     "btn min-h-12 flex-1 justify-center border-0 border-b-2 text-[12px]",
                     view === option
                       ? "border-b-[var(--color-accent)] font-extrabold"
-                      : "border-b-transparent opacity-55",
+                      : "border-b-transparent text-muted hover:border-b-[var(--color-divider)]",
                   )}
                 >
                   {option === "categories"
@@ -167,7 +167,7 @@ export function TournamentView({ slug }: { slug: string }) {
             />
           ) : (
             <>
-          <div className="rule-b2 flex overflow-x-auto">
+          <div className="rule-b2 scroll-hint flex overflow-x-auto">
             {events.map((event) => (
               <button
                 key={event._id}
@@ -178,7 +178,7 @@ export function TournamentView({ slug }: { slug: string }) {
                   "min-h-12 shrink-0 whitespace-nowrap border-0 border-b-2 px-3.5 text-[13px]",
                   event._id === activeEvent?._id
                     ? "border-b-[var(--color-accent)] font-extrabold"
-                    : "border-b-transparent opacity-55",
+                    : "border-b-transparent text-muted hover:border-b-[var(--color-divider)]",
                 )}
               >
                 {event.name}
@@ -194,7 +194,7 @@ export function TournamentView({ slug }: { slug: string }) {
         </section>
       )}
 
-      <p className="rule-t2 m-0 flex items-center gap-2 px-4 py-3.5 text-[12px] opacity-60">
+      <p className="rule-t2 m-0 flex items-center gap-2 px-4 py-3.5 text-[12px] text-muted">
         <LiveDot size={6} />
         Updating live · no need to refresh
       </p>

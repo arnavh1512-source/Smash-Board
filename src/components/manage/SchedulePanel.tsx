@@ -121,7 +121,7 @@ export function SchedulePanel({
     <div>
       <Section>
         <h6 className="m-0">Order of play</h6>
-        <p className="m-0 text-[13px] opacity-70">
+        <p className="m-0 text-[13px] text-muted">
           Every category is laid out on one timetable. Each player is guaranteed their rest between
           matches, and another category fills the court while they take it.
         </p>
@@ -189,7 +189,7 @@ export function SchedulePanel({
         </div>
 
         {capacity?.ok ? (
-          <p data-testid="day-capacity" className="m-0 text-[12px] opacity-70">
+          <p data-testid="day-capacity" className="m-0 text-[12px] text-muted">
             {capacity.text}
           </p>
         ) : capacity ? (
@@ -251,7 +251,7 @@ export function SchedulePanel({
                 "btn min-h-11 flex-1 justify-center border-0 border-b-2 text-[12px]",
                 view === option
                   ? "border-b-[var(--color-accent)] font-extrabold"
-                  : "border-b-transparent opacity-55",
+                  : "border-b-transparent text-muted hover:border-b-[var(--color-divider)]",
               )}
             >
               {option === "time" ? "In time order" : "Court by court"}

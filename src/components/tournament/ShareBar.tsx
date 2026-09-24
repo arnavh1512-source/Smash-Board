@@ -16,7 +16,7 @@ export function ShareBar({
 }) {
   const [copied, setCopied] = useState(false);
   const url = typeof window === "undefined" ? path : `${window.location.origin}${path}`;
-  const size = compact ? "min-h-10 text-[12px]" : "min-h-11 text-[13px]";
+  const size = compact ? "text-[12px]" : "text-[13px]";
 
   async function copy() {
     try {
