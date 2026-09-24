@@ -33,7 +33,7 @@ export function PlayerName({ name }: { name: string }) {
       type="button"
       onClick={() => pick(name)}
       title={`See ${name}'s matches and courts`}
-      className="-my-3 cursor-pointer appearance-none border-0 bg-transparent px-0 py-3 text-left [color:inherit] [font:inherit] underline decoration-dotted decoration-1 underline-offset-[3px] hover:decoration-solid"
+      className="-my-3.5 cursor-pointer appearance-none border-0 bg-transparent px-0 py-3.5 text-left [color:inherit] [font:inherit] underline decoration-dotted decoration-1 underline-offset-[3px] hover:decoration-solid"
     >
       {name}
     </button>

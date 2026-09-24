@@ -5,11 +5,12 @@ import Link from "next/link";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
-import { Alert, Button, Spinner, cx } from "@/components/ui";
+import { Alert, Button, ConfirmButton, Spinner, cx } from "@/components/ui";
 import { EventPanel } from "@/components/tournament/EventPanel";
 import { ShareBar } from "@/components/tournament/ShareBar";
 import { useTournamentData } from "@/components/tournament/useTournamentData";
-import { useSession, errorMessage } from "@/lib/useSession";
+import { errorMessage } from "@/lib/errors";
+import { useSession } from "@/lib/useSession";
 import { scoringSummary } from "@/lib/display";
 import { scoringForRound, type RoundScoring, type ScoringConfig } from "@/lib/scoring";
 import { countKnockoutRounds } from "@/lib/draw";
@@ -114,6 +115,24 @@ function CategoryList({
 }) {
   const remove = useMutation(api.events.remove);
   const [error, setError] = useState<string | null>(null);
+  // The category whose played results the organiser is being asked about.
+  const [forceAsk, setForceAsk] = useState<Doc<"events">["_id"] | null>(null);
+
+  async function destroy(event: Doc<"events">, force?: boolean) {
+    setError(null);
+    setForceAsk(null);
+    try {
+      await remove({ eventId: event._id, token, force });
+    } catch (caught) {
+      // A category holding played matches is refused the first time. Deleting a
+      // record of a competition is not undoable from anywhere in the product,
+      // so the organiser is told exactly what is about to be thrown away and
+      // has to say yes again.
+      const message = errorMessage(caught);
+      if (!force && message.includes("has results in it")) setForceAsk(event._id);
+      else setError(message);
+    }
+  }
 
   if (events.length === 0) return null;
 
@@ -129,7 +148,7 @@ function CategoryList({
       ) : null}
       <ul className="m-0 list-none p-0">
         {events.map((event) => (
-          <li key={event._id} className="rule-b flex items-center gap-3 px-4 py-3">
+          <li key={event._id} className="rule-b flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
             <div className="min-w-0 flex-1">
               <p className="m-0 truncate text-[14px] font-extrabold leading-tight">{event.name}</p>
               <p className="m-0 truncate text-[11px] text-muted">
@@ -140,41 +159,37 @@ function CategoryList({
             <Button variant="ghost" onClick={() => onEdit(event)}>
               Edit
             </Button>
-            <Button
+            <ConfirmButton
               variant="ghost"
               className="text-muted"
-              onClick={async () => {
-                if (!window.confirm(`Delete ${event.name} with all its entrants and scores?`)) return;
-                setError(null);
-                try {
-                  await remove({ eventId: event._id, token });
-                } catch (caught) {
-                  // A category holding played matches is refused the first time.
-                  // Deleting a record of a competition is not undoable from
-                  // anywhere in the product, so the organiser is told exactly
-                  // what is about to be thrown away and has to say yes again.
-                  const message = errorMessage(caught);
-                  if (!message.includes("has results in it")) {
-                    setError(message);
-                    return;
-                  }
-                  if (
-                    !window.confirm(
-                      `${event.name} has matches that have already been played. Deleting it throws those results away for good. Delete it anyway?`,
-                    )
-                  ) {
-                    return;
-                  }
-                  try {
-                    await remove({ eventId: event._id, token, force: true });
-                  } catch (forced) {
-                    setError(errorMessage(forced));
-                  }
-                }
-              }}
+              question={`Delete ${event.name} with all its entrants and scores?`}
+              confirmLabel="Yes, delete"
+              cancelLabel="Keep it"
+              onConfirm={() => destroy(event)}
             >
               Delete
-            </Button>
+            </ConfirmButton>
+            {forceAsk === event._id ? (
+              <div className="flex w-full basis-full flex-col gap-2">
+                <Alert kind="warning">
+                  {event.name} has matches that have already been played. Deleting it throws those
+                  results away for good.
+                </Alert>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="danger"
+                    className="min-h-12"
+                    autoFocus
+                    onClick={() => destroy(event, true)}
+                  >
+                    Delete it anyway
+                  </Button>
+                  <Button variant="secondary" className="min-h-12" onClick={() => setForceAsk(null)}>
+                    Keep the results
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </li>
         ))}
       </ul>
@@ -215,7 +230,9 @@ export function ManageConsole({
         <p className="mt-2 text-[13px] text-muted">
           The link may be wrong, or the tournament has been deleted.
         </p>
-        <Link href="/">Back to all tournaments</Link>
+        <Link href="/" className="inline-flex min-h-11 items-center">
+          Back to all tournaments
+        </Link>
       </div>
     );
   }
@@ -264,7 +281,7 @@ export function ManageConsole({
               {referee ? "Referee console" : "Organiser console"}
             </p>
             <h2 className="m-0 mt-1 break-words text-[26px]">{tournament.name}</h2>
-            <Link href={`/t/${tournament.slug}`} className="text-[12px]">
+            <Link href={`/t/${tournament.slug}`} className="inline-flex min-h-11 items-center text-[12px]">
               View the public scoreboard
             </Link>
           </div>

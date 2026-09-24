@@ -19,7 +19,7 @@ test.describe("sign-in", () => {
     await page.getByLabel("Organiser PIN").fill("not-the-pin");
     await page.getByRole("button", { name: "Unlock the console" }).click();
 
-    await expect(formAlert(page)).toHaveText("Wrong organiser PIN.");
+    await expect(formAlert(page)).toHaveText("That PIN was not recognised.");
     await expect(page.getByText("Organiser console", { exact: true })).toHaveCount(0);
 
     // And the right PIN still works afterwards: a wrong guess must not spoil
@@ -40,7 +40,7 @@ test.describe("sign-in", () => {
     for (let attempt = 1; attempt <= 4; attempt += 1) {
       await field.fill(`wrong-${attempt}`);
       await submit.click();
-      await expect(formAlert(page)).toHaveText("Wrong organiser PIN.");
+      await expect(formAlert(page)).toHaveText("That PIN was not recognised.");
     }
 
     // The fifth shuts this browser out, and says so rather than repeating

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
   ReactNode,
+  Ref,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
@@ -31,6 +32,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   /** Full width, text aligned left — the design's dominant call-to-action shape. */
   block?: boolean;
+  ref?: Ref<HTMLButtonElement>;
 }
 
 export function Button({ variant = "primary", block, className, ...props }: ButtonProps) {
@@ -38,6 +40,86 @@ export function Button({ variant = "primary", block, className, ...props }: Butt
     <button
       {...props}
       className={cx("btn", BUTTON_CLASS[variant], block && "btn-block", className)}
+    />
+  );
+}
+
+interface ConfirmButtonProps extends Omit<ButtonProps, "onClick" | "ref"> {
+  /** What is about to happen, shown in place of the button until answered. */
+  question: ReactNode;
+  confirmLabel: string;
+  cancelLabel?: string;
+  onConfirm: () => unknown;
+  /** Act straight away, for the cases where there is nothing to lose. */
+  skip?: boolean;
+}
+
+/**
+ * A destructive button that asks inline before it acts. A native confirm()
+ * dialog is blocked inside some in-app browsers and reads as a system error
+ * on a phone, so the question is drawn in the page, where it can be styled,
+ * translated and answered with a thumb.
+ */
+export function ConfirmButton({
+  question,
+  confirmLabel,
+  cancelLabel = "Cancel",
+  onConfirm,
+  skip,
+  ...props
+}: ConfirmButtonProps) {
+  const [asking, setAsking] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const answered = useRef(false);
+
+  useEffect(() => {
+    // Hand focus back to the button that opened the question once it closes.
+    if (asking || !answered.current) return;
+    answered.current = false;
+    trigger.current?.focus();
+  }, [asking]);
+
+  function close() {
+    answered.current = true;
+    setAsking(false);
+  }
+
+  if (asking) {
+    return (
+      <div
+        className="flex w-full basis-full flex-col gap-2"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") close();
+        }}
+      >
+        <Alert kind="warning">{question}</Alert>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="danger"
+            className="min-h-12"
+            autoFocus
+            onClick={() => {
+              close();
+              void onConfirm();
+            }}
+          >
+            {confirmLabel}
+          </Button>
+          <Button type="button" variant="secondary" className="min-h-12" onClick={close}>
+            {cancelLabel}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Button
+      type="button"
+      {...props}
+      ref={trigger}
+      onClick={() => (skip ? void onConfirm() : setAsking(true))}
     />
   );
 }
@@ -230,11 +312,26 @@ export function Sheet({
   );
 }
 
+const STALL_MS = 8000;
+
+/** A load that is taking this long is usually a dropped connection, so say so. */
 export function Spinner({ label = "Loading" }: { label?: string }) {
+  const [stalled, setStalled] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setStalled(true), STALL_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
   return (
-    <p className="flex items-center gap-2 px-4 py-8 text-[13px] text-muted">
-      <LiveDot />
-      {label}…
-    </p>
+    <div role="status" className="px-4 py-8 text-[13px] text-muted">
+      <p className="m-0 flex items-center gap-2">
+        <LiveDot />
+        {label}…
+      </p>
+      {stalled ? (
+        <p className="m-0 mt-2">
+          This is taking longer than usual. Check your internet connection, then reload the page.
+        </p>
+      ) : null}
+    </div>
   );
 }

@@ -6,7 +6,8 @@ import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Button, Field, Input } from "@/components/ui";
-import { errorMessage, type AccessRole } from "@/lib/useSession";
+import { errorMessage } from "@/lib/errors";
+import type { AccessRole } from "@/lib/useSession";
 import { clientId } from "@/lib/clientId";
 
 /**

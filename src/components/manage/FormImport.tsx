@@ -5,7 +5,7 @@ import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Alert, Button, Checkbox, Field, Select, Textarea } from "@/components/ui";
-import { errorMessage } from "@/lib/useSession";
+import { errorMessage } from "@/lib/errors";
 import {
   categoryOptions,
   guessColumns,

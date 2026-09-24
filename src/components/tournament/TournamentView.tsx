@@ -44,7 +44,7 @@ export function TournamentView({ slug }: { slug: string }) {
         <p className="text-[13px] text-muted">
           The link may be wrong, or the organiser may have deleted it.
         </p>
-        <Link href="/" className="text-[13px]">
+        <Link href="/" className="inline-flex min-h-11 items-center text-[13px]">
           Back to all tournaments
         </Link>
       </div>
@@ -68,7 +68,7 @@ export function TournamentView({ slug }: { slug: string }) {
           <h2 className="m-0 break-words text-[26px]">{tournament.name}</h2>
           <Link
             href={`/t/${tournament.slug}/manage`}
-            className="shrink-0 whitespace-nowrap text-[12px]"
+            className="inline-flex min-h-11 items-center shrink-0 whitespace-nowrap text-[12px]"
           >
             Organiser sign-in
           </Link>

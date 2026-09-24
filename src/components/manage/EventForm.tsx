@@ -8,7 +8,7 @@ import { Alert, Button, Checkbox, Field, Input, Section, Select } from "@/compon
 import { ScoringFields } from "./ScoringFields";
 import { DEFAULT_SCORING, type ScoringConfig } from "@/lib/scoring";
 import { looksLikeDoubles } from "@/lib/display";
-import { errorMessage } from "@/lib/useSession";
+import { errorMessage } from "@/lib/errors";
 
 type Format = Doc<"events">["format"];
 

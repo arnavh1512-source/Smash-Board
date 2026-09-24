@@ -82,18 +82,3 @@ export function useSession(slug: string, role: AccessRole = "organiser") {
 
   return { token, setToken, ready };
 }
-
-/** Turn any thrown value into a message worth showing an organiser. */
-export function errorMessage(error: unknown): string {
-  if (error && typeof error === "object" && "data" in error) {
-    const data = (error as { data: unknown }).data;
-    if (typeof data === "string") return data;
-  }
-  if (error instanceof Error) {
-    // Convex prefixes server errors; keep only the readable part.
-    const match = error.message.match(/Uncaught ConvexError:\s*(.*)/);
-    if (match) return match[1].split("\n")[0];
-    return error.message.split("\n")[0];
-  }
-  return "Something went wrong. Please try again.";
-}

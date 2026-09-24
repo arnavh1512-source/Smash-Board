@@ -356,13 +356,7 @@ export async function attemptSignIn(
     // PIN suddenly stopped working.
     if (sourceLocked) return { ok: false, error: lockoutMessage(SOURCE_LOCKOUT_MS, "device") };
     if (locked) return { ok: false, error: lockoutMessage(LOCKOUT_MS, "tournament") };
-    return {
-      ok: false,
-      error:
-        allow.includes("referee") && allow.includes("organiser")
-          ? "That PIN was not recognised."
-          : "Wrong organiser PIN.",
-    };
+    return { ok: false, error: "That PIN was not recognised." };
   }
 
   const { role, rehash } = matched;

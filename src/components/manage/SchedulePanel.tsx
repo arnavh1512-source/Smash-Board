@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
-import { Alert, Button, Field, Input, Section, cx } from "@/components/ui";
+import { Alert, Button, ConfirmButton, Field, Input, Section, cx } from "@/components/ui";
 import { CourtGrid } from "@/components/tournament/CourtGrid";
 import { OrderOfPlay } from "@/components/tournament/OrderOfPlay";
 import { StaleScheduleNotice } from "@/components/tournament/StaleScheduleNotice";
@@ -17,7 +17,7 @@ import {
   dayWindowMinutes,
   formatClock,
 } from "@/lib/schedule";
-import { errorMessage } from "@/lib/useSession";
+import { errorMessage } from "@/lib/errors";
 
 interface ScheduleSettings {
   dayStart: string;
@@ -221,20 +221,22 @@ export function SchedulePanel({
             {busy ? "Planning…" : planned ? "Plan again" : "Plan the order of play"}
           </Button>
           {planned ? (
-            <Button
+            <ConfirmButton
               variant="ghost"
               className="min-h-12"
               disabled={busy}
-              onClick={() =>
+              question="Clear every match time and court?"
+              confirmLabel="Yes, clear timings"
+              cancelLabel="Keep them"
+              onConfirm={() =>
                 run(async () => {
-                  if (!window.confirm("Clear every match time and court?")) return;
                   await clear({ tournamentId, token });
                   setNotice("Timings cleared.");
                 })
               }
             >
               Clear timings
-            </Button>
+            </ConfirmButton>
           ) : null}
         </div>
       </Section>

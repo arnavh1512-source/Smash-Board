@@ -162,6 +162,7 @@
     background: transparent;
     border: 1px solid transparent;
     min-height: 44px;
+    min-width: 44px;
     padding: var(--space-2) calc(var(--space-3) * 1.2);
     border-radius: var(--radius-md);
   }

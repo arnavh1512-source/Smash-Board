@@ -4,10 +4,10 @@ import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
-import { Alert, Button, Checkbox, Section } from "@/components/ui";
+import { Alert, Checkbox, ConfirmButton, Section } from "@/components/ui";
 import { OrderOfPlay } from "@/components/tournament/OrderOfPlay";
 import type { EntryLookup } from "@/components/tournament/MatchRow";
-import { errorMessage } from "@/lib/useSession";
+import { errorMessage } from "@/lib/errors";
 
 /** Generate or clear the draw for one category, and show when it is on court. */
 export function DrawPanel({
@@ -33,8 +33,7 @@ export function DrawPanel({
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function run(action: () => Promise<unknown>, confirmText: string) {
-    if (!window.confirm(confirmText)) return;
+  async function run(action: () => Promise<unknown>) {
     setError(null);
     setNotice(null);
     setBusy(true);
@@ -72,62 +71,64 @@ export function DrawPanel({
         ) : null}
 
         <div className="flex flex-wrap gap-2">
-          <Button
+          <ConfirmButton
             className="min-h-12"
             disabled={busy || playingCount < 2}
-            onClick={() =>
-              run(
-                async () => {
-                  const outcome = await generate({ eventId: event._id, token, randomise });
-                  setNotice(`Draw made: ${outcome.matches} matches.`);
-                },
-                hasMatches
-                  ? "Generating the draw again rebuilds every match in this category. Continue?"
-                  : "Generate the draw for this category?",
-              )
+            skip={!hasMatches}
+            question="Generating the draw again rebuilds every match in this category."
+            confirmLabel="Yes, rebuild it"
+            cancelLabel="Keep the draw"
+            onConfirm={() =>
+              run(async () => {
+                const outcome = await generate({ eventId: event._id, token, randomise });
+                setNotice(`Draw made: ${outcome.matches} matches.`);
+              })
             }
           >
             {busy ? "Working…" : hasMatches ? "Generate again" : "Generate draw"}
-          </Button>
+          </ConfirmButton>
 
           {hasMatches ? (
-            <Button
+            <ConfirmButton
               variant="ghost"
               className="min-h-12"
               disabled={busy || playingCount < 2}
-              onClick={() =>
-                run(
-                  async () => {
-                    const outcome = await generate({
-                      eventId: event._id,
-                      token,
-                      randomise,
-                      force: true,
-                    });
-                    setNotice(`Draw made: ${outcome.matches} matches.`);
-                  },
-                  "This throws away every score already played in this category and builds a new draw. This cannot be undone. Continue?",
-                )
+              question="This throws away every score already played in this category and builds a new draw. It cannot be undone."
+              confirmLabel="Yes, reset and redraw"
+              cancelLabel="Keep the scores"
+              onConfirm={() =>
+                run(async () => {
+                  const outcome = await generate({
+                    eventId: event._id,
+                    token,
+                    randomise,
+                    force: true,
+                  });
+                  setNotice(`Draw made: ${outcome.matches} matches.`);
+                })
               }
             >
               Reset &amp; redraw
-            </Button>
+            </ConfirmButton>
           ) : null}
 
           {hasMatches ? (
-            <Button
+            <ConfirmButton
               variant="ghost"
               className="min-h-12"
               disabled={busy}
-              onClick={() =>
+              question="Clear the draw? Every match and score in this category will be deleted."
+              confirmLabel="Yes, clear it"
+              cancelLabel="Keep the draw"
+              onConfirm={() =>
                 run(async () => {
                   await clear({ eventId: event._id, token });
                   setNotice("Draw cleared.");
-                }, "Clear the draw? Every match and score in this category will be deleted.")
+                })
               }
             >
               Clear draw
-            </Button>
+            </ConfirmButton>
           ) : null}
         </div>
 

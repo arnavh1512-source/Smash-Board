@@ -7,7 +7,7 @@ import type { Doc } from "../../../convex/_generated/dataModel";
 import type { EntryLookup } from "@/components/tournament/MatchRow";
 import { Alert, Badge, Button, Field, Input, Sheet, cx } from "@/components/ui";
 import { scoringSummary, sideName, STATUS_LABELS } from "@/lib/display";
-import { errorMessage } from "@/lib/useSession";
+import { errorMessage } from "@/lib/errors";
 import { hasPlayedResult } from "@/lib/results";
 import {
   addPoint,

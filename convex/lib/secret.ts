@@ -25,16 +25,22 @@ import { ConvexError } from "convex/values";
 
 const MIN_SECRET_LENGTH = 32;
 
+/** What the organiser sees. It says nothing about how the deployment is configured. */
+export const SIGN_IN_UNAVAILABLE =
+  "Sign-in is unavailable on this site right now. Please try again later, or contact the site owner.";
+
 export function tokenSecret(): string {
   const secret = process.env.SMASHBOARD_TOKEN_SECRET;
   if (secret === undefined || secret.length < MIN_SECRET_LENGTH) {
-    // A ConvexError, because production replaces a plain Error's message with
-    // "Server Error" and the organiser would have nothing to pass on. It names
-    // the variable and never anything about what the deployment currently holds.
-    throw new ConvexError(
-      "SMASHBOARD_TOKEN_SECRET is not set on this deployment, or is shorter than " +
+    // The operator needs the variable's name; the visitor does not. The detail
+    // goes to the deployment log, and never anything the deployment holds.
+    console.error(
+      `SMASHBOARD_TOKEN_SECRET is not set on this deployment, or is shorter than ` +
         `${MIN_SECRET_LENGTH} characters. Sign-in is disabled until it is.`,
     );
+    // A ConvexError, because production replaces a plain Error's message with
+    // "Server Error" and the organiser would have nothing readable at all.
+    throw new ConvexError(SIGN_IN_UNAVAILABLE);
   }
   return secret;
 }

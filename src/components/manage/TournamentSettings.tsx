@@ -5,9 +5,18 @@ import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { Alert, Button, Checkbox, Field, Input, Section, Textarea } from "@/components/ui";
+import {
+  Alert,
+  Button,
+  Checkbox,
+  ConfirmButton,
+  Field,
+  Input,
+  Section,
+  Textarea,
+} from "@/components/ui";
 import { ShareBar } from "@/components/tournament/ShareBar";
-import { errorMessage } from "@/lib/useSession";
+import { errorMessage } from "@/lib/errors";
 
 export interface TournamentDetails {
   _id: Id<"tournaments">;
@@ -288,9 +297,6 @@ function RefereePinForm({
   }
 
   async function clear() {
-    if (!window.confirm("Remove the referee PIN? Umpires will lose access to the scoring page.")) {
-      return;
-    }
     setError(null);
     setNotice(null);
     setBusy(true);
@@ -353,9 +359,17 @@ function RefereePinForm({
             {busy ? "Saving…" : tournament.hasRefereePin ? "Replace PIN" : "Set referee PIN"}
           </Button>
           {tournament.hasRefereePin ? (
-            <Button type="button" variant="ghost" className="min-h-12" disabled={busy} onClick={clear}>
+            <ConfirmButton
+              variant="ghost"
+              className="min-h-12"
+              disabled={busy}
+              question="Remove the referee PIN? Umpires will lose access to the scoring page."
+              confirmLabel="Yes, remove it"
+              cancelLabel="Keep the PIN"
+              onConfirm={clear}
+            >
               Remove
-            </Button>
+            </ConfirmButton>
           ) : null}
         </div>
       </form>

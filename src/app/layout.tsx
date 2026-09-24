@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import Script from "next/script";
 import { Archivo } from "next/font/google";
 import "./globals.css";
 import { ConvexClientProvider } from "./ConvexClientProvider";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
 import { SITE, whatsappLink } from "@/lib/site";
-import { THEME_INIT_SCRIPT, ThemeToggle } from "@/components/ThemeToggle";
+import { ThemeScript, ThemeToggle } from "@/components/ThemeToggle";
 
 /** Regular for body copy, 800 for every heading and button — the design uses no other weights. */
 const archivo = Archivo({
@@ -88,11 +87,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // The theme script adds its class to <html> before React hydrates.
     <html lang="en" className={`${archivo.variable} h-full antialiased`} suppressHydrationWarning>
       <head>
-        {/* next/script, not a raw <script>: when Next renders the root layout on the
-            client (a not-found page, say) React warns about raw script tags. */}
-        <Script id="theme-init" strategy="beforeInteractive">
-          {THEME_INIT_SCRIPT}
-        </Script>
+        <ThemeScript />
       </head>
       <body className="flex min-h-full flex-col">
         <script
@@ -102,7 +97,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
         <ConvexClientProvider>
           <header className="nav sticky top-0 z-40">
-            <Link href="/" className="nav-brand truncate uppercase">
+            <Link href="/" className="nav-brand block min-w-0 truncate uppercase leading-[44px]">
               {SITE.name}
             </Link>
             <ThemeToggle />
@@ -111,7 +106,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </Link>
           </header>
 
-          <main className="flex-1">{children}</main>
+          {/* pb-20 keeps the last row of any page clear of the floating WhatsApp button. */}
+          <main className="flex-1 pb-20">{children}</main>
 
           {/* pr-20 keeps the footer link clear of the floating WhatsApp button. */}
           <footer className="rule-t2 flex items-center justify-between gap-3 py-3.5 pl-4 pr-20">

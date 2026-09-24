@@ -15,7 +15,7 @@ export default function NotFound() {
         That link does not exist. It may have been mistyped, or the organiser may have deleted the
         tournament it pointed at.
       </p>
-      <Link href="/" className="text-[13px]">
+      <Link href="/" className="inline-flex min-h-11 items-center text-[13px]">
         Back to all tournaments
       </Link>
     </div>

@@ -6,7 +6,8 @@ import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Alert, Button, Checkbox, Field, Input, Textarea } from "@/components/ui";
 import { clientId } from "@/lib/clientId";
-import { errorMessage, sessionKey } from "@/lib/useSession";
+import { errorMessage } from "@/lib/errors";
+import { sessionKey } from "@/lib/useSession";
 
 /** A section heading in the form: an accent numeral and a title, as the design sets them. */
 function Step({ number, title }: { number: string; title: string }) {
@@ -85,6 +86,7 @@ export function CreateTournamentForm() {
 
         <Field label="Tournament name">
           <Input
+            name="name"
             required
             minLength={3}
             maxLength={120}
@@ -96,6 +98,7 @@ export function CreateTournamentForm() {
 
         <Field label="Venue">
           <Input
+            name="venue"
             value={venue}
             onChange={(e) => setVenue(e.target.value)}
             placeholder="Sardar Patel Stadium Hall 2"
@@ -104,11 +107,12 @@ export function CreateTournamentForm() {
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Starts">
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <Input type="date" name="startDate" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </Field>
           <Field label="Ends">
             <Input
               type="date"
+              name="endDate"
               min={startDate || undefined}
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
@@ -117,14 +121,19 @@ export function CreateTournamentForm() {
         </div>
 
         <Field label="Notes for players" hint="Entry fee, reporting time, rules — anything worth saying.">
-          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} />
+          <Textarea name="notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} />
         </Field>
 
         <hr className="hr" style={{ margin: 0 }} />
         <Step number="02" title="You" />
 
         <Field label="Organiser name">
-          <Input value={organiserName} onChange={(e) => setOrganiserName(e.target.value)} />
+          <Input
+            name="organiserName"
+            autoComplete="name"
+            value={organiserName}
+            onChange={(e) => setOrganiserName(e.target.value)}
+          />
         </Field>
 
         <Field
@@ -133,6 +142,8 @@ export function CreateTournamentForm() {
         >
           <Input
             type="tel"
+            name="organiserPhone"
+            autoComplete="tel"
             value={organiserPhone}
             onChange={(e) => setOrganiserPhone(e.target.value)}
             placeholder="+91 98765 43210"
@@ -140,6 +151,7 @@ export function CreateTournamentForm() {
         </Field>
 
         <Checkbox
+          name="showOrganiserContact"
           checked={showOrganiserContact}
           onChange={(e) => setShowOrganiserContact(e.target.checked)}
           label="Show this number on the public page so players can reach you"
@@ -159,6 +171,7 @@ export function CreateTournamentForm() {
             required
             minLength={6}
             maxLength={64}
+            name="pin"
             value={pin}
             onChange={(e) => setPin(e.target.value)}
             autoComplete="new-password"
@@ -172,6 +185,7 @@ export function CreateTournamentForm() {
             required
             minLength={6}
             maxLength={64}
+            name="confirmPin"
             value={confirmPin}
             onChange={(e) => setConfirmPin(e.target.value)}
             autoComplete="new-password"
@@ -180,6 +194,7 @@ export function CreateTournamentForm() {
         </Field>
 
         <Checkbox
+          name="isPublic"
           checked={isPublic}
           onChange={(e) => setIsPublic(e.target.checked)}
           label="Listed publicly on the home page"

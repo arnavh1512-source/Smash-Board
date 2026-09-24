@@ -15,3 +15,8 @@ export function whatsappLink(message?: string): string {
   const base = `https://wa.me/${SITE.whatsappNumber}`;
   return message ? `${base}?text=${encodeURIComponent(message)}` : base;
 }
+
+/** wa.me link that lets the sender pick the chat, for sharing rather than contacting us. */
+export function whatsappShareLink(message: string): string {
+  return `https://wa.me/?text=${encodeURIComponent(message)}`;
+}

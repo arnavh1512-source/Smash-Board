@@ -4,8 +4,18 @@ import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
-import { Alert, Badge, Button, Field, Input, Section, Textarea, cx } from "@/components/ui";
-import { errorMessage } from "@/lib/useSession";
+import {
+  Alert,
+  Badge,
+  Button,
+  ConfirmButton,
+  Field,
+  Input,
+  Section,
+  Textarea,
+  cx,
+} from "@/components/ui";
+import { errorMessage } from "@/lib/errors";
 import { entryName } from "@/lib/display";
 import { duplicatePeople, personKey } from "@/lib/identity";
 import { FormImport } from "./FormImport";
@@ -308,35 +318,30 @@ function EntryRow({
       >
         Edit
       </Button>
-      <Button
+      <ConfirmButton
         variant="ghost"
         disabled={drawExists && entry.withdrawn}
-        onClick={() => {
-          if (
-            !entry.withdrawn &&
-            drawExists &&
-            !window.confirm(
-              `Withdraw ${entryName(entry)}? Their remaining matches will be awarded to their opponents.`,
-            )
-          ) {
-            return;
-          }
-          void run(() => update({ entryId: entry._id, token, withdrawn: !entry.withdrawn }));
-        }}
+        skip={entry.withdrawn || !drawExists}
+        question={`Withdraw ${entryName(entry)}? Their remaining matches will be awarded to their opponents.`}
+        confirmLabel="Yes, withdraw"
+        cancelLabel="Keep them in"
+        onConfirm={() =>
+          run(() => update({ entryId: entry._id, token, withdrawn: !entry.withdrawn }))
+        }
       >
         {entry.withdrawn ? "Reinstate" : "Withdraw"}
-      </Button>
+      </ConfirmButton>
       {drawExists ? null : (
-        <Button
+        <ConfirmButton
           variant="ghost"
           className="text-muted"
-          onClick={() => {
-            if (!window.confirm(`Remove ${entryName(entry)} from this category?`)) return;
-            void run(() => remove({ entryId: entry._id, token }));
-          }}
+          question={`Remove ${entryName(entry)} from this category?`}
+          confirmLabel="Yes, remove"
+          cancelLabel="Keep them"
+          onConfirm={() => run(() => remove({ entryId: entry._id, token }))}
         >
           Remove
-        </Button>
+        </ConfirmButton>
       )}
     </li>
   );
